@@ -20,6 +20,25 @@ class SourceImportResult {
 
   /// TVBox 配置里的解析服务（`parses`）。
   final List<ParseRule> parseRules;
+
+  /// 导入结果的一句话摘要，供源管理页与局域网导入共用。
+  String get summary {
+    if (sources.isEmpty &&
+        iptvSubscriptions.isEmpty &&
+        parseRules.isEmpty &&
+        errors.isEmpty) {
+      return '订阅源无变化';
+    }
+    final buffer = StringBuffer('导入 ${sources.length} 个影视源');
+    if (iptvSubscriptions.isNotEmpty) {
+      buffer.write('、${iptvSubscriptions.length} 个直播订阅（进入直播页拉取频道）');
+    }
+    if (parseRules.isNotEmpty) {
+      buffer.write('、${parseRules.length} 个解析服务');
+    }
+    buffer.write('，错误 ${errors.length} 个');
+    return buffer.toString();
+  }
 }
 
 class ImportedIptvSubscription {

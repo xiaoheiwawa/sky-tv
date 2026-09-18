@@ -235,21 +235,9 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
       ref.invalidate(sourcesProvider);
       ref.invalidate(parseRulesProvider);
       Navigator.of(context, rootNavigator: true).pop();
-      final liveCount = importResult.iptvSubscriptions.length;
-      final parseCount = importResult.parseRules.length;
-      final message =
-          importResult.sources.isEmpty &&
-              liveCount == 0 &&
-              parseCount == 0 &&
-              importResult.errors.isEmpty
-          ? '订阅源无变化'
-          : '导入 ${importResult.sources.length} 个影视源'
-                '${liveCount == 0 ? '' : '、$liveCount 个直播订阅（进入直播页拉取频道）'}'
-                '${parseCount == 0 ? '' : '、$parseCount 个解析服务'}'
-                '，错误 ${importResult.errors.length} 个';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      ).showSnackBar(SnackBar(content: Text(importResult.summary)));
     } catch (error) {
       if (!mounted) {
         return;
