@@ -286,4 +286,31 @@ void main() {
       throwsA(predicate((Object error) => error.toString().contains('切换其他线路'))),
     );
   });
+
+  test('parses netdisk details that omit vod_id', () async {
+    final client = MockClient(
+      (request) async => _json({
+        'list': [
+          {
+            'vod_name': '完美世界',
+            'vod_play_from': '百度#1',
+            'vod_play_url': '正片\$https://pan.example.com/x',
+          },
+        ],
+      }),
+    );
+    final api = VideoApi(client: client);
+
+    final detail = await api.detail(
+      _dsSource(),
+      'http://site.example.com/id/150.html',
+    );
+
+    expect(detail?.id, 'http://site.example.com/id/150.html');
+    expect(detail?.title, '完美世界');
+    expect(
+      detail?.playLines.single.episodes.single.url,
+      'https://pan.example.com/x',
+    );
+  });
 }
