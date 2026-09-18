@@ -11,6 +11,7 @@ import '../../data/repositories/app_providers.dart';
 import '../../ui/widgets/app_dialogs.dart';
 import '../../ui/widgets/poster_row.dart';
 import '../../ui/widgets/state_views.dart';
+import 'lan_import_dialog.dart';
 import 'source_picker.dart';
 
 class SourcesPage extends ConsumerStatefulWidget {
@@ -66,6 +67,11 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
           ],
         ),
         actions: [
+          IconButton(
+            onPressed: () => unawaited(showLanImportDialog(context)),
+            icon: const Icon(Icons.qr_code_2_rounded),
+            tooltip: '局域网导入',
+          ),
           IconButton(
             onPressed: sources.maybeWhen(
               data: (items) => items.any((source) => !source.disabled)
@@ -785,6 +791,12 @@ class _SourceManageSheetState extends ConsumerState<_SourceManageSheet> {
                         onPressed: widget.onImport,
                         tooltip: '导入影视源',
                         icon: const Icon(Icons.add_rounded),
+                      ),
+                      IconButton(
+                        onPressed: () =>
+                            unawaited(showLanImportDialog(context)),
+                        tooltip: '局域网导入',
+                        icon: const Icon(Icons.qr_code_2_rounded),
                       ),
                     ],
                   ),
