@@ -198,8 +198,10 @@ AGENTS.md                     指向 ./docs/docs.md
 ### DS（drpy-node / T4）源
 
 - 查询约定：首页 `filter=1`（返回 `class` 分类表与推荐 `list`）、分类 `ac=list&t=<分类ID>&pg=<页>`、搜索 `wd=<关键词>&pg=<页>`、详情 `ac=detail&ids=<ID>`、播放 `play=<分集值>&flag=<线路名>`。
-- 详情响应可能是 `{list:[...]}` 或裸数组，`VideoApi` 统一归一为 `list` 后再交给 `MacCmsParser`。
+- 详情响应可能是 `{list:[...]}` 或裸数组，`VideoApi` 统一归一为 `list` 后再交给 `MacCmsParser`；网盘类源的详情**不返回 `vod_id`**，用请求时传入的 `fallbackId` 兜底（见 `MacCmsParser.parseDetail`）。
 - 分集播放必须二次解析：`MediaRepository.resolvePlay` 调 `play` 接口拿 `{url, header, parse, jx}`；返回的请求头（Referer 等）合并进 media_kit 的 `httpHeaders` 且优先于全局 UA。
+- 网盘类源的 `url` 是 `[名称, 地址, 名称, 地址]` 数组，且常混入 `http://127.0.0.1:<端口>/` 的本机代理地址；`VideoApi` 只取可直连的一条（优先带媒体扩展名），并去掉 TVBox 追加的 `#isVideo=true##threads=10#` 尾巴。
+- 当前线路拿不到地址时，播放页会依次尝试同影片的其他线路，成功即切换到该线路（网盘源的「需要账号解析」线路因此不影响「直链」线路播放）。
 - 服务端返回 `parse/jx=1` 且地址不是直链媒体时，`PlayResolution.needsParse` 为 true，播放前交给第三方解析服务换成真实地址（见下）；未导入解析服务时明确报错，不做静默失败。
 - 超时：MacCMS 10s、DS 30s（服务端需要执行规则）；`SourceRepository` 测速分别为 3s / 15s。
 
