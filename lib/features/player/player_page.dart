@@ -266,11 +266,7 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     try {
       return await _resolveOnLine(lineIndex, episode);
     } catch (error) {
-      final alternative = await _resolveOnOtherLine(
-        detail,
-        episode,
-        lineIndex,
-      );
+      final alternative = await _resolveOnOtherLine(detail, episode, lineIndex);
       if (alternative == null) {
         rethrow;
       }
@@ -323,10 +319,8 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     if (source == null) {
       throw Exception('影视源不存在');
     }
-    final line = detail.playLines[lineIndex.clamp(
-      0,
-      detail.playLines.length - 1,
-    )];
+    final line =
+        detail.playLines[lineIndex.clamp(0, detail.playLines.length - 1)];
     final resolution = await mediaRepo.resolvePlay(source, line, episode);
     if (!resolution.needsParse) {
       return resolution;

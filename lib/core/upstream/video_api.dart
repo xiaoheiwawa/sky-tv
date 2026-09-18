@@ -294,7 +294,13 @@ String? _cleanPlayUrl(String value) {
     return null;
   }
   final host = Uri.tryParse(text)?.host ?? '';
-  if (const ['127.0.0.1', 'localhost', '0.0.0.0', '::1', '[::1]'].contains(host)) {
+  if (const [
+    '127.0.0.1',
+    'localhost',
+    '0.0.0.0',
+    '::1',
+    '[::1]',
+  ].contains(host)) {
     return null;
   }
   return text;

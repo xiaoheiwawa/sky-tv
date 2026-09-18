@@ -274,9 +274,7 @@ void main() {
   });
 
   test('explains when a netdisk line needs an unsupported parser', () async {
-    final client = MockClient(
-      (request) async => _json({'parse': 1, 'jx': 1}),
-    );
+    final client = MockClient((request) async => _json({'parse': 1, 'jx': 1}));
     final api = VideoApi(client: client);
 
     await expectLater(
@@ -285,9 +283,7 @@ void main() {
         line: const PlayLine(name: '优汐#1', flag: '优汐#1', episodes: []),
         episode: const Episode(title: '正片', url: 'pid-1'),
       ),
-      throwsA(
-        predicate((Object error) => error.toString().contains('切换其他线路')),
-      ),
+      throwsA(predicate((Object error) => error.toString().contains('切换其他线路'))),
     );
   });
 }
