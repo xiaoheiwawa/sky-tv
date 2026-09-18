@@ -2,10 +2,19 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 
+import '../models/source_kind.dart';
+
 String normalizeSourceName(String value) => value.trim();
 
-String normalizeApiUrl(String value) {
+String normalizeApiUrl(String value, {SourceKind kind = SourceKind.maccms}) {
   final trimmed = value.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    throw FormatException('api_url 只支持 http/https: $value');
+  }
+  if (kind == SourceKind.ds) {
+    // DS 接口地址带 pwd/extend 等查询参数，按原样保留。
+    return trimmed.replaceAll(RegExp(r'/+$'), '');
+  }
   final uri = Uri.tryParse(trimmed);
   if (uri == null || !uri.hasScheme) {
     throw FormatException('api_url 不是有效 URL: $value');
@@ -13,11 +22,11 @@ String normalizeApiUrl(String value) {
   if (uri.scheme != 'http' && uri.scheme != 'https') {
     throw FormatException('api_url 只支持 http/https: $value');
   }
-  final withoutSlash = trimmed.replaceAll(RegExp(r'/+$'), '');
-  if (withoutSlash.endsWith('/at/json')) {
-    return withoutSlash;
+  final path = uri.path.replaceAll(RegExp(r'/+$'), '');
+  if (path.endsWith('/at/json')) {
+    return uri.replace(path: path).toString();
   }
-  return '$withoutSlash/at/json';
+  return uri.replace(path: '$path/at/json').toString();
 }
 
 String buildSourceId(String normalizedName, String normalizedApiUrl) {

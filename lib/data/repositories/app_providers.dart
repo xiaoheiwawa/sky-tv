@@ -2,8 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/upstream/maccms_api.dart';
+import '../../core/upstream/video_api.dart';
 import '../../core/models/media_models.dart';
+import '../../core/models/parse_rule.dart';
+import '../../core/upstream/parse_resolver.dart';
 import 'iptv_repository.dart';
 import '../storage/app_database.dart';
 import 'media_repository.dart';
@@ -35,10 +37,10 @@ final requestHeadersProvider = FutureProvider<Map<String, String>>((ref) async {
   return {'User-Agent': userAgent};
 });
 
-final macCmsApiProvider = FutureProvider<MacCmsApi>((ref) async {
+final videoApiProvider = FutureProvider<VideoApi>((ref) async {
   final headers = await ref.watch(requestHeadersProvider.future);
   final client = ref.watch(httpClientProvider);
-  final api = MacCmsApi(client: client, headers: headers);
+  final api = VideoApi(client: client, headers: headers);
   ref.onDispose(api.close);
   return api;
 });
@@ -63,8 +65,23 @@ final iptvRepositoryProvider = FutureProvider<IptvRepository>((ref) async {
 
 final mediaRepositoryProvider = FutureProvider<MediaRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
-  final api = await ref.watch(macCmsApiProvider.future);
+  final api = await ref.watch(videoApiProvider.future);
   return MediaRepository(db: db, api: api);
+});
+
+final parseRulesProvider = FutureProvider.autoDispose<List<ParseRule>>((
+  ref,
+) async {
+  final repo = await ref.watch(sourceRepositoryProvider.future);
+  return repo.parseRules();
+});
+
+final parseResolverProvider = FutureProvider<ParseResolver>((ref) async {
+  final headers = await ref.watch(requestHeadersProvider.future);
+  final client = ref.watch(httpClientProvider);
+  final resolver = ParseResolver(client: client, headers: headers);
+  ref.onDispose(resolver.close);
+  return resolver;
 });
 
 final settingsRepositoryProvider = FutureProvider<SettingsRepository>((

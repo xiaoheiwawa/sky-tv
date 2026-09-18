@@ -18,6 +18,7 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeModeProvider);
     final userAgent = ref.watch(customUserAgentProvider);
+    final parseRules = ref.watch(parseRulesProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
@@ -59,6 +60,35 @@ class SettingsPage extends ConsumerWidget {
                 child: CircularProgressIndicator(strokeWidth: 2),
               ),
               title: Text('正在读取 UA 设置'),
+            ),
+          ),
+          parseRules.when(
+            data: (rules) => ListTile(
+              leading: const Icon(Icons.auto_fix_high_rounded),
+              title: const Text('第三方解析'),
+              subtitle: Text(
+                rules.isEmpty
+                    ? '未导入；需要解析的线路会提示解析失败'
+                    : '已导入 ${rules.length} 个：'
+                          '${rules.take(3).map((rule) => rule.name).join('、')}'
+                          '${rules.length > 3 ? ' 等' : ''}',
+              ),
+              onTap: rules.isEmpty
+                  ? null
+                  : () => _confirmClearParseRules(context, ref),
+            ),
+            error: (error, _) => ListTile(
+              leading: const Icon(Icons.error_outline_rounded),
+              title: const Text('解析服务读取失败'),
+              subtitle: Text(error.toString()),
+            ),
+            loading: () => const ListTile(
+              leading: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              title: Text('正在读取解析服务'),
             ),
           ),
           const SectionHeader(title: '数据'),
@@ -126,7 +156,7 @@ class SettingsPage extends ConsumerWidget {
     await repo.setCustomUserAgent(result);
     ref.invalidate(customUserAgentProvider);
     ref.invalidate(requestHeadersProvider);
-    ref.invalidate(macCmsApiProvider);
+    ref.invalidate(videoApiProvider);
     ref.invalidate(mediaRepositoryProvider);
     ref.invalidate(sourceRepositoryProvider);
     ref.invalidate(iptvRepositoryProvider);
@@ -135,6 +165,30 @@ class SettingsPage extends ConsumerWidget {
         context,
       ).showSnackBar(const SnackBar(content: Text('UA 设置已保存')));
     }
+  }
+
+  Future<void> _confirmClearParseRules(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final confirmed = await confirmActionDialog(
+      context,
+      title: '清空解析服务',
+      message: '将删除已导入的第三方解析服务。之后遇到需要解析的线路会提示解析失败。',
+      confirmText: '清空',
+    );
+    if (!confirmed || !context.mounted) {
+      return;
+    }
+    final repo = await ref.read(sourceRepositoryProvider.future);
+    repo.clearParseRules();
+    ref.invalidate(parseRulesProvider);
+    if (!context.mounted) {
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('解析服务已清空')));
   }
 
   Future<void> _confirmClearCache(BuildContext context, WidgetRef ref) async {

@@ -1,4 +1,5 @@
 import '../models/media_models.dart';
+import '../models/source_kind.dart';
 import '../models/video_source.dart';
 import 'play_url_parser.dart';
 
@@ -34,30 +35,46 @@ class MacCmsParser {
     Map<String, Object?> json,
     VideoSource source,
   ) {
-    return _list(json).map((item) => _mediaItem(item, source)).toList();
+    final raw = _list(json);
+    if (raw.isEmpty) {
+      return const [];
+    }
+    final items = raw
+        .map((item) => _mediaItem(item, source))
+        .whereType<MediaItem>()
+        .toList();
+    if (items.isNotEmpty) {
+      return items;
+    }
+    if (raw.every(_isPlaceholder)) {
+      throw const FormatException('上游返回「无数据」占位，该源当前不可用');
+    }
+    throw const FormatException('MacCMS 响应缺少 vod_id 或 vod_name');
   }
 
   MediaDetail? parseDetail(Map<String, Object?> json, VideoSource source) {
-    final list = _list(json);
-    if (list.isEmpty) {
-      return null;
+    for (final item in _list(json)) {
+      final media = _mediaItem(item, source);
+      if (media == null) {
+        continue;
+      }
+      return MediaDetail(
+        id: media.id,
+        sourceId: media.sourceId,
+        sourceName: media.sourceName,
+        title: media.title,
+        poster: media.poster,
+        year: media.year,
+        category: media.category,
+        description: media.description,
+        playLines: parsePlayLines(
+          _optionalString(item['vod_play_from']),
+          _optionalString(item['vod_play_url']),
+          allowPlayId: source.kind == SourceKind.ds,
+        ),
+      );
     }
-    final item = list.first;
-    final media = _mediaItem(item, source);
-    return MediaDetail(
-      id: media.id,
-      sourceId: media.sourceId,
-      sourceName: media.sourceName,
-      title: media.title,
-      poster: media.poster,
-      year: media.year,
-      category: media.category,
-      description: media.description,
-      playLines: parsePlayLines(
-        _optionalString(item['vod_play_from']),
-        _optionalString(item['vod_play_url']),
-      ),
-    );
+    return null;
   }
 
   List<Map> _list(Map<String, Object?> json) {
@@ -68,11 +85,11 @@ class MacCmsParser {
     return raw.whereType<Map>().toList();
   }
 
-  MediaItem _mediaItem(Map item, VideoSource source) {
+  MediaItem? _mediaItem(Map item, VideoSource source) {
     final id = _string(item['vod_id'] ?? item['id']);
     final title = _string(item['vod_name'] ?? item['name']);
-    if (id.isEmpty || title.isEmpty) {
-      throw const FormatException('MacCMS 响应缺少 vod_id 或 vod_name');
+    if (id.isEmpty || title.isEmpty || _isPlaceholder(item)) {
+      return null;
     }
     return MediaItem(
       id: id,
@@ -84,6 +101,13 @@ class MacCmsParser {
       category: _optionalString(item['type_name']),
       description: _cleanHtml(_optionalString(item['vod_content'])),
     );
+  }
+
+  /// drpy 系列规则在上游无数据时会返回占位条目，避免被当成正常影片。
+  bool _isPlaceholder(Map item) {
+    final id = _string(item['vod_id'] ?? item['id']);
+    final title = _string(item['vod_name'] ?? item['name']);
+    return id == 'no_data' || title.contains('防无限请求');
   }
 
   String _string(Object? value) => value?.toString().trim() ?? '';

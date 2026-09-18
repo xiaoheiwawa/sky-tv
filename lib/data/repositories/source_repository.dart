@@ -3,10 +3,14 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/models/iptv_models.dart';
 import '../../core/models/media_models.dart';
+import '../../core/models/parse_rule.dart';
+import '../../core/models/source_kind.dart';
 import '../../core/models/video_source.dart';
 import '../../core/parser/source_importer.dart';
 import '../../core/source/source_id.dart';
+import '../../core/upstream/video_api.dart';
 import '../storage/app_database.dart';
 
 class SourceRepository {
@@ -39,7 +43,36 @@ class SourceRepository {
     if (result.sources.isNotEmpty) {
       _db.upsertSources(result.sources);
     }
+    _importIptvSubscriptions(result.iptvSubscriptions);
+    if (result.parseRules.isNotEmpty) {
+      _db.replaceParseRules(result.parseRules);
+    }
     return result;
+  }
+
+  List<ParseRule> parseRules() => _db.loadParseRules();
+
+  void clearParseRules() => _db.deleteParseRules();
+
+  /// TVBox 配置里的直播订阅先落库，频道留给 LivePage 的到期刷新拉取。
+  void _importIptvSubscriptions(List<ImportedIptvSubscription> subscriptions) {
+    final now = DateTime.now();
+    for (final item in subscriptions) {
+      final id = buildHash(item.url).substring(0, 16);
+      if (_db.loadIptvSubscription(id) != null) {
+        continue;
+      }
+      _db.upsertIptvSubscription(
+        IptvSubscription(
+          id: id,
+          name: item.name,
+          url: item.url,
+          enabled: true,
+          lastUpdatedAt: now,
+        ),
+        const [],
+      );
+    }
   }
 
   Future<SourceImportResult> importSubscriptionUrl(
@@ -169,14 +202,16 @@ class SourceRepository {
   }
 
   Future<int?> _testLatency(VideoSource source) async {
-    final uri = Uri.parse(
-      source.apiUrl,
-    ).replace(queryParameters: const {'ac': 'list'});
+    final uri = buildSourceUri(source, _latencyQuery(source));
     final watch = Stopwatch()..start();
     try {
       final response = await _client
           .get(uri, headers: _headers)
-          .timeout(const Duration(seconds: 3));
+          .timeout(
+            source.kind == SourceKind.ds
+                ? const Duration(seconds: 15)
+                : const Duration(seconds: 3),
+          );
       if (response.statusCode != 200) {
         return null;
       }
@@ -185,6 +220,12 @@ class SourceRepository {
       return null;
     }
   }
+
+  Map<String, String> _latencyQuery(VideoSource source) =>
+      switch (source.kind) {
+        SourceKind.maccms => const {'ac': 'list'},
+        SourceKind.ds => const {'filter': '1'},
+      };
 }
 
 class LatencyTestResult {

@@ -78,9 +78,12 @@ class MediaDetail extends MediaItem {
 }
 
 class PlayLine {
-  const PlayLine({required this.name, required this.episodes});
+  const PlayLine({required this.name, required this.episodes, this.flag = ''});
 
   final String name;
+
+  /// 线路原始标识，DS 源播放时作为 `flag` 回传。
+  final String flag;
   final List<Episode> episodes;
 }
 

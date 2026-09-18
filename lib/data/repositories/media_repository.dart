@@ -2,7 +2,7 @@ import 'dart:async';
 
 import '../../core/models/media_models.dart';
 import '../../core/models/video_source.dart';
-import '../../core/upstream/maccms_api.dart';
+import '../../core/upstream/video_api.dart';
 import '../storage/app_database.dart';
 
 sealed class SearchEvent {
@@ -47,7 +47,7 @@ class MediaRepository {
   static const _maxHomeFeedCacheEntries = 20;
 
   final AppDatabase db;
-  final MacCmsApi api;
+  final VideoApi api;
   final _searchCache = <String, _CacheEntry<List<MediaItem>>>{};
   final _detailCache = <String, _CacheEntry<MediaDetail>>{};
   final _categoryPreviewCache = <String, _CacheEntry<List<MediaItem>>>{};
@@ -381,6 +381,15 @@ class MediaRepository {
       );
     }
     return detail;
+  }
+
+  /// 解析分集播放地址；DS 源需要向服务端换取真实地址与请求头。
+  Future<PlayResolution> resolvePlay(
+    VideoSource source,
+    PlayLine line,
+    Episode episode,
+  ) {
+    return api.resolvePlay(source, line: line, episode: episode);
   }
 
   void saveWatchRecord(WatchRecord record) => db.saveWatchRecord(record);

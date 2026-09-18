@@ -94,17 +94,20 @@ lib/
   core/
     models/
       media_models.dart       分类、MediaItem/Detail、PlayLine、续看、订阅模型
-      video_source.dart       MacCMS 影视源模型
+      video_source.dart       影视源模型
+      source_kind.dart        影视源协议类型（maccms / ds）
+      parse_rule.dart         第三方解析（jx）规则模型
       iptv_models.dart        IPTV 订阅与频道模型
     parser/
       maccms_parser.dart      MacCMS JSON → 领域模型
       play_url_parser.dart      播放地址分集解析
-      source_importer.dart    影视源 JSON 导入
+      source_importer.dart    影视源 JSON / TVBox 配置导入
       iptv_parser.dart        M3U/M3U8/TXT/JSON 频道解析
     source/
       source_id.dart          源 ID、名称、URL 规范化
     upstream/
-      maccms_api.dart         MacCMS 上游请求（categories/search/detail/latest/recent）
+      video_api.dart          影视源上游请求（MacCMS / DS）+ 播放地址解析
+      parse_resolver.dart     第三方解析服务调用与链接嗅探
 
   data/
     repositories/
@@ -157,6 +160,8 @@ test/
   source_importer_test.dart
   play_url_parser_test.dart
   iptv_parser_test.dart
+  video_api_test.dart
+  parse_resolver_test.dart
 
 docs/
   docs.md                     本文件（AI 开发规范入口）
@@ -172,14 +177,38 @@ AGENTS.md                     指向 ./docs/docs.md
 
 ## 关键业务边界
 
-### 影视源（MacCMS）
+### 影视源（MacCMS / DS）
 
 - 影视源身份以 `name + api_url` 生成稳定 ID（`core/source/source_id.dart`）。
 - 不使用独立 `key` 字段。
-- MacCMS 请求集中在 `MacCmsApi`；响应解析在 `MacCmsParser`。
+- 协议类型 `SourceKind`：`maccms`（MacCMS V10 JSON，`api_url` 自动补 `/at/json`）与 `ds`（drpy-node / DS 的 T4 接口 `http://host:port/api/<名称>`）；`kind`、`extend` 持久化在 `video_sources` 表。
+- DS 接口地址上的查询参数（`pwd`、`do` 等）必须保留，请求地址统一由 `buildSourceUri` 拼接，`extend` 与本次动作参数叠加在其上。
+- 上游请求集中在 `VideoApi`（`core/upstream/video_api.dart`）；两种协议字段同族，响应解析复用 `MacCmsParser`。
 - 源本地读写、订阅拉取、测速集中在 `SourceRepository`。
-- `SourcesPage` 同时承担**浏览**（源切换、分类预览、进详情/分类）和**管理**（导入 JSON、订阅 URL、测速、启用/删除）；管理入口在 AppBar「源管理」。
+- `SourcesPage` 同时承担**浏览**（源切换、分类预览、进详情/分类）和**管理**（导入 JSON / TVBox 配置、订阅 URL、测速、启用/删除）；管理入口在 AppBar「源管理」。
 - 直接粘贴 JSON 导入的源**不会**写入 `source_subscriptions`，因此不参与自动订阅刷新。
+
+### DS（drpy-node / T4）源
+
+- 查询约定：首页 `filter=1`（返回 `class` 分类表与推荐 `list`）、分类 `ac=list&t=<分类ID>&pg=<页>`、搜索 `wd=<关键词>&pg=<页>`、详情 `ac=detail&ids=<ID>`、播放 `play=<分集值>&flag=<线路名>`。
+- 详情响应可能是 `{list:[...]}` 或裸数组，`VideoApi` 统一归一为 `list` 后再交给 `MacCmsParser`。
+- 分集播放必须二次解析：`MediaRepository.resolvePlay` 调 `play` 接口拿 `{url, header, parse, jx}`；返回的请求头（Referer 等）合并进 media_kit 的 `httpHeaders` 且优先于全局 UA。
+- 服务端返回 `parse/jx=1` 且地址不是直链媒体时，`PlayResolution.needsParse` 为 true，播放前交给第三方解析服务换成真实地址（见下）；未导入解析服务时明确报错，不做静默失败。
+- 超时：MacCMS 10s、DS 30s（服务端需要执行规则）；`SourceRepository` 测速分别为 3s / 15s。
+
+### 第三方解析（parses）
+
+- TVBox 配置里的 `parses` 导入到 `parse_rules` 表（`ParseRule`，`core/models/parse_rule.dart`）：导入即整体替换该表，可在「设置 → 第三方解析」查看数量并清空。
+- `ParseResolver`（`core/upstream/parse_resolver.dart`）按列表顺序尝试：`type` 非 0 的当 JSON 取 `url`（兼容 `data.url`、`result.url` 等嵌套），`type=0` 的当网页从 HTML/JS 嗅探 m3u8/mp4；相对地址按解析服务的 origin 补全；命中媒体地址即返回，全部失败才抛错并带上原因。
+- 调用方式是把（URL 编码后的）待解析地址拼在解析服务地址末尾，支持 `{url}` 占位符；解析服务自带的 `header` 与全局 UA 合并后下发。
+- 导入时跳过非 http 的解析地址；解析列表为空时 DS 的解析线路会提示需要先导入配置。
+
+### 导入格式
+
+- sky-tv 自有格式：`[{name, api_url, kind?, extend?}]` 或 `{sources:[...]}`。
+- TVBox 配置：`{sites:[...], lives:[...], parses:[...]}`。`sites[].api` 含 `api.php/provide/vod` 或 `/at/json` 判为 MacCMS，含 `/api/` 判为 DS；`csp_`、`type 3`（JS 规则）、`type 0`（XML）会被跳过并计入导入错误原因。
+- `lives[].url` 落库为 IPTV 订阅（`last_checked_at` 为空即视为到期，进入直播页时拉取频道），已存在的同 URL 订阅不覆盖。
+- `parses[]` 落库为第三方解析服务，供 DS 的解析线路使用。
 
 ### 影视数据（MediaRepository）
 
@@ -213,18 +242,20 @@ AGENTS.md                     指向 ./docs/docs.md
 - 不自定义复杂手势层；不恢复曾造成严重问题的全屏锁定逻辑。
 - 全屏返回/退出须在 fullscreen 控件自身 `BuildContext` 上调用 `exitFullscreen`；弹层关闭须在弹层内 `Navigator.pop`。
 - 点播下一集、直播下一频道由业务层（`player_page.dart` / `live_player_page.dart`）控制；控制条通过 `onNext`、`selectorAction` 暴露回调。
+- 点播播放前统一走 `MediaRepository.resolvePlay`：MacCMS 直接播放分集地址，DS 先向服务端换取真实地址与请求头；`needsParse` 时再由 `ParseResolver` 交给第三方解析服务。
 - 选集单路径：页面内联 / BottomSheet / 全屏·宽屏侧栏共用 `_EpisodeList → _EpisodeGrid → _EpisodeTile`；`overlay` 区分深色侧栏与扁平 BottomSheet 样式。
 
 ### 自定义 UA
 
 - UA 存储在 `SettingsRepository`（shared_preferences）。
-- `requestHeadersProvider` 统一注入；MacCMS、订阅拉取、测速、IPTV 拉取、播放请求复用同一份 header。
+- `requestHeadersProvider` 统一注入；MacCMS / DS、订阅拉取、测速、IPTV 拉取、播放请求复用同一份 header。
 - 页面层不应重复拼接 header。
 
 ### 设置与缓存
 
 - 主题：系统 / 浅色 / 深色。
 - 「刷新首页数据」：`invalidate(homeDataProvider)` + `invalidate(homeFeedProvider)`。
+- 「第三方解析」：展示已导入的解析服务数量，可一键清空（`SourceRepository.clearParseRules`）；导入 TVBox 配置时自动写入。
 - 「清理缓存」：清理分类缓存、海报图片缓存，并重置订阅校验状态；**不**删除 IPTV 频道、订阅、收藏与观看记录（见 `AppDatabase.clearCache`）。
 
 ## UI 规范

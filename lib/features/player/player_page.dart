@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/models/media_models.dart';
+import '../../core/upstream/video_api.dart';
 import '../../data/repositories/app_providers.dart';
 import '../../data/repositories/media_repository.dart';
 import '../../ui/theme/app_system_ui.dart';
@@ -220,10 +221,15 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
       final resumePositionMs = _resumePositionMs;
       _resumePositionMs = null;
       _resetProgressSnapshot();
+      final resolution = await _resolveEpisode(episode);
+      if (!mounted || _closing) {
+        return;
+      }
+      final headers = {..._requestHeaders, ...resolution.headers};
       await player.open(
         Media(
-          episode.url,
-          httpHeaders: _requestHeaders.isEmpty ? null : _requestHeaders,
+          resolution.url,
+          httpHeaders: headers.isEmpty ? null : headers,
           start: resumePositionMs == null
               ? null
               : Duration(milliseconds: resumePositionMs),
@@ -243,6 +249,34 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
         _loadError = error.toString();
       });
     }
+  }
+
+  /// DS 源的分集值是服务端 play id，播放前需要换取真实地址与请求头。
+  Future<PlayResolution> _resolveEpisode(Episode episode) async {
+    final detail = _detail;
+    final mediaRepo = _mediaRepo;
+    if (detail == null || mediaRepo == null || detail.playLines.isEmpty) {
+      return PlayResolution(url: episode.url);
+    }
+    final sourceRepo = await ref.read(sourceRepositoryProvider.future);
+    final source = sourceRepo.findById(widget.sourceId);
+    if (source == null) {
+      throw Exception('影视源不存在');
+    }
+    final line =
+        detail.playLines[_lineIndex.clamp(0, detail.playLines.length - 1)];
+    final resolution = await mediaRepo.resolvePlay(source, line, episode);
+    if (!resolution.needsParse) {
+      return resolution;
+    }
+    // 服务端标记需要第三方解析：交给配置里的解析服务换取真实地址。
+    final rules = await ref.read(parseRulesProvider.future);
+    final resolver = await ref.read(parseResolverProvider.future);
+    final parsed = await resolver.resolve(resolution.url, rules);
+    return PlayResolution(
+      url: parsed.url,
+      headers: {...resolution.headers, ...parsed.headers},
+    );
   }
 
   Episode? get _currentEpisode {

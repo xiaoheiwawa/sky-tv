@@ -169,7 +169,7 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
     final result = await showAppTextInputDialog(
       context,
       title: '导入影视源',
-      hintText: '粘贴订阅 URL，或 JSON 数组',
+      hintText: '粘贴订阅 URL、影视源 JSON，或 TVBox 配置（sites/lives/parses）',
       confirmText: '导入',
       minLines: 8,
       maxLines: 12,
@@ -193,16 +193,23 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
         return;
       }
       ref.invalidate(sourcesProvider);
+      ref.invalidate(parseRulesProvider);
       Navigator.of(context, rootNavigator: true).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            importResult.sources.isEmpty && importResult.errors.isEmpty
-                ? '订阅源无变化'
-                : '导入 ${importResult.sources.length} 个源，错误 ${importResult.errors.length} 个',
-          ),
-        ),
-      );
+      final liveCount = importResult.iptvSubscriptions.length;
+      final parseCount = importResult.parseRules.length;
+      final message =
+          importResult.sources.isEmpty &&
+              liveCount == 0 &&
+              parseCount == 0 &&
+              importResult.errors.isEmpty
+          ? '订阅源无变化'
+          : '导入 ${importResult.sources.length} 个影视源'
+                '${liveCount == 0 ? '' : '、$liveCount 个直播订阅（进入直播页拉取频道）'}'
+                '${parseCount == 0 ? '' : '、$parseCount 个解析服务'}'
+                '，错误 ${importResult.errors.length} 个';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (!mounted) {
         return;
@@ -619,7 +626,7 @@ class _SourceRailTile extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              _LatencyBadge(text: _latencyText(source)),
+              _SourceBadge(text: _latencyText(source)),
             ],
           ),
         ),
@@ -867,7 +874,13 @@ class _ManageSourceTile extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  _LatencyBadge(text: _latencyText(source)),
+                  Row(
+                    children: [
+                      _SourceBadge(text: _latencyText(source)),
+                      const SizedBox(width: 6),
+                      _SourceBadge(text: source.kind.label),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -883,8 +896,8 @@ class _ManageSourceTile extends StatelessWidget {
   }
 }
 
-class _LatencyBadge extends StatelessWidget {
-  const _LatencyBadge({required this.text});
+class _SourceBadge extends StatelessWidget {
+  const _SourceBadge({required this.text});
 
   final String text;
 

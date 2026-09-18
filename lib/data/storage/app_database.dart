@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 import '../../core/models/media_models.dart';
 import '../../core/models/iptv_models.dart';
+import '../../core/models/parse_rule.dart';
+import '../../core/models/source_kind.dart';
 import '../../core/models/video_source.dart';
 
 class AppDatabase {
@@ -53,6 +57,16 @@ class AppDatabase {
     );
     _addColumnIfMissing('video_sources', 'last_success_at', 'INTEGER');
     _addColumnIfMissing('video_sources', 'last_failure_at', 'INTEGER');
+    _addColumnIfMissing(
+      'video_sources',
+      'kind',
+      'TEXT NOT NULL DEFAULT \'maccms\'',
+    );
+    _addColumnIfMissing(
+      'video_sources',
+      'extend',
+      'TEXT NOT NULL DEFAULT \'\'',
+    );
     _db.execute('''
       CREATE TABLE IF NOT EXISTS source_categories (
         source_id TEXT NOT NULL,
@@ -128,7 +142,67 @@ class AppDatabase {
     _db.execute(
       'CREATE INDEX IF NOT EXISTS idx_iptv_channels_name ON iptv_channels(name)',
     );
+    _db.execute('''
+      CREATE TABLE IF NOT EXISTS parse_rules (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        type INTEGER NOT NULL DEFAULT 1,
+        header TEXT NOT NULL DEFAULT '{}',
+        sort_order INTEGER NOT NULL DEFAULT 0
+      );
+    ''');
   }
+
+  List<ParseRule> loadParseRules() {
+    final rows = _db.select(
+      'SELECT * FROM parse_rules ORDER BY sort_order ASC, name ASC',
+    );
+    return rows.map((row) {
+      return ParseRule(
+        id: row['id'] as String,
+        name: row['name'] as String,
+        url: row['url'] as String,
+        type: (row['type'] as int) == 0
+            ? ParseRuleType.web
+            : ParseRuleType.json,
+        header: _headers(row['header']),
+      );
+    }).toList();
+  }
+
+  /// 导入配置时整体替换：配置里的 parses 就是用户当前的解析列表。
+  void replaceParseRules(List<ParseRule> rules) {
+    _db.execute('BEGIN');
+    try {
+      _db.execute('DELETE FROM parse_rules');
+      final statement = _db.prepare('''
+        INSERT INTO parse_rules (id, name, url, type, header, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?)
+      ''');
+      try {
+        for (var i = 0; i < rules.length; i++) {
+          final rule = rules[i];
+          statement.execute([
+            rule.id,
+            rule.name,
+            rule.url,
+            rule.type == ParseRuleType.web ? 0 : 1,
+            jsonEncode(rule.header),
+            i,
+          ]);
+        }
+      } finally {
+        statement.close();
+      }
+      _db.execute('COMMIT');
+    } catch (_) {
+      _db.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  void deleteParseRules() => _db.execute('DELETE FROM parse_rules');
 
   List<VideoSource> loadSources() {
     final rows = _db.select('''
@@ -144,6 +218,8 @@ class AppDatabase {
         sourceId: row['source_id'] as String,
         name: row['name'] as String,
         apiUrl: row['api_url'] as String,
+        kind: SourceKind.fromJson(row['kind']),
+        extend: (row['extend'] as String?) ?? '',
         disabled: (row['disabled'] as int) == 1,
         sortOrder: row['sort_order'] as int,
         avgLatencyMs: row['avg_latency_ms'] as int,
@@ -211,12 +287,14 @@ class AppDatabase {
     try {
       final statement = _db.prepare('''
         INSERT INTO video_sources (
-          source_id, name, api_url, disabled, sort_order,
+          source_id, name, api_url, kind, extend, disabled, sort_order,
           avg_latency_ms, last_success_at, last_failure_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(source_id) DO UPDATE SET
           name = excluded.name,
-          api_url = excluded.api_url
+          api_url = excluded.api_url,
+          kind = excluded.kind,
+          extend = excluded.extend
       ''');
       try {
         for (final source in sources) {
@@ -224,6 +302,8 @@ class AppDatabase {
             source.sourceId,
             source.name,
             source.apiUrl,
+            source.kind.name,
+            source.extend,
             source.disabled ? 1 : 0,
             source.sortOrder,
             source.avgLatencyMs,
@@ -673,6 +753,23 @@ class AppDatabase {
       return null;
     }
     return DateTime.fromMillisecondsSinceEpoch(value);
+  }
+
+  Map<String, String> _headers(Object? value) {
+    if (value is! String || value.isEmpty) {
+      return const {};
+    }
+    try {
+      final decoded = jsonDecode(value);
+      if (decoded is! Map) {
+        return const {};
+      }
+      return decoded.map(
+        (key, item) => MapEntry(key.toString(), item.toString()),
+      );
+    } catch (_) {
+      return const {};
+    }
   }
 
   int? _millis(DateTime? value) => value?.millisecondsSinceEpoch;
