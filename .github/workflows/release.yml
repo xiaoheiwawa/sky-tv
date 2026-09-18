@@ -81,6 +81,7 @@ jobs:
           cache: true
 
       - name: 校验 Android 签名信息
+        id: signing
         shell: bash
         run: |
           echo "校验 Android PKCS#12 签名信息"
@@ -91,13 +92,16 @@ jobs:
             fi
           done
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::以下 Secrets 未配置或为空：${missing[*]}"
-            echo "请到仓库 Settings → Secrets and variables → Actions 添加后重跑。"
-            exit 1
+            echo "::warning::以下 Secrets 未配置或为空：${missing[*]}，本次使用 debug 签名出包（可自测，正式发布请补齐）。"
+            echo "请到仓库 Settings → Secrets and variables → Actions 添加后重跑可得到正式签名包。"
+            echo "signing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "签名信息齐全，使用正式签名。"
+            echo "signing=true" >> "$GITHUB_OUTPUT"
           fi
-          echo "签名信息齐全"
 
       - name: 写入 Android 签名文件
+        if: steps.signing.outputs.signing == 'true'
         shell: bash
         run: |
           echo "写入临时 PKCS#12 签名文件"
@@ -111,9 +115,9 @@ jobs:
       - name: 构建 Android APK 分 ABI
         shell: bash
         env:
-          SIGNING_KEY_PATH: ${{ github.workspace }}/android/app/release-key.p12
+          SIGNING_KEY_PATH: ${{ steps.signing.outputs.signing == 'true' && format('{0}/android/app/release-key.p12', github.workspace) || '' }}
         run: |
-          echo "构建 Android 正式版 APK：armeabi-v7a、arm64-v8a"
+          echo "构建 Android APK：armeabi-v7a、arm64-v8a（签名模式：${{ steps.signing.outputs.signing }}）"
           VERSION_NAME="${{ inputs.tag }}"
           VERSION_NAME="${VERSION_NAME#v}"
           flutter build apk --release \
