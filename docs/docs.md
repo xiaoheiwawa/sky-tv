@@ -108,6 +108,8 @@ lib/
     upstream/
       video_api.dart          影视源上游请求（MacCMS / DS）+ 播放地址解析
       parse_resolver.dart     第三方解析服务调用与链接嗅探
+    lan/
+      lan_import_server.dart  局域网导入 HTTP 服务（手机扫码推送影视源）
 
   data/
     repositories/
@@ -126,6 +128,8 @@ lib/
       search_page.dart        多源并发搜索、分批加载
     sources/
       sources_page.dart       影视浏览（分类预览）+ 源管理/导入
+      source_picker.dart      换源选择器（搜索 + 列数切换 + 点击即切）
+      lan_import_dialog.dart  局域网扫码导入弹窗（二维码 + 提交状态）
     category/
       category_page.dart      分类影片网格
     detail/
@@ -162,6 +166,7 @@ test/
   iptv_parser_test.dart
   video_api_test.dart
   parse_resolver_test.dart
+  lan_import_server_test.dart
 
 docs/
   docs.md                     本文件（AI 开发规范入口）
@@ -212,12 +217,20 @@ AGENTS.md                     指向 ./docs/docs.md
 - `lives[].url` 落库为 IPTV 订阅（`last_checked_at` 为空即视为到期，进入直播页时拉取频道），已存在的同 URL 订阅不覆盖。
 - `parses[]` 落库为第三方解析服务，供 DS 的解析线路使用。
 
+### 局域网导入
+
+- `LanImportServer`（`core/lan/lan_import_server.dart`）在弹窗存活期间监听 `9978` 起的可用端口，只绑定局域网 IPv4，关窗即释放。
+- 网页提供粘贴框、文件选择与提交按钮；`POST /import` 的正文既可以是影视源 JSON / TVBox 配置，也可以是订阅 URL，走与「源管理 → 导入」同一条 `SourceRepository` 路径，导入后刷新 `sourcesProvider`、`parseRulesProvider`。
+- 弹窗用 `qr_flutter` 展示 `http://<局域网 IP>:<端口>` 二维码（对应 webhtv 的推送配置方式），设备与手机需在同一局域网。
+
 ### 影视数据（MediaRepository）
 
 - 搜索：对启用源并发请求，批次大小与并发上限见 `MediaRepository` 常量；结果以 `Stream<SearchEvent>` 推送。
 - 详情、搜索、分类预览、首页推荐均有内存缓存，带条目上限与 TTL。
 - 首页发现（`homeFeedProvider`）：优先当前源，其次续看所在源，最多尝试 3 个源；单次拉取拆成竖版焦点与「为你推荐」。主路径 `latestVideos`（`videolist&pg=1`），空池回退 `recentVideos(h=72)`；有海报、排除续看/收藏；焦点最多 5、推荐最多 8，同源去重；10 分钟内存缓存。
 - 分类列表持久化在 `source_categories` 表；预览行在 `categoryPreviewRowsProvider`。
+- 海报：首页/搜索/分类返回的 `vod_pic` 会记入内存海报表（上限 2000 条）；详情接口不返回封面时回退到该表（drpy 源常见，约六成详情无封面），避免详情页空海报。
+- `PosterImage` 按 `requestHeadersProvider` 下发自定义 UA，与接口请求保持一致。
 - 收藏、续看、最近搜索关键词持久化在 sqlite；续看主键为 `(source_id, media_id)`。
 
 ### 订阅自动刷新
