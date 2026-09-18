@@ -246,4 +246,48 @@ void main() {
     expect(resolution.url, 'http://cdn.example.com/1.m3u8');
     expect(resolution.headers, isEmpty);
   });
+
+  test('picks the direct link from netdisk url arrays', () async {
+    final client = MockClient(
+      (request) async => _json({
+        'parse': 0,
+        'url': [
+          '原画',
+          'https://d.pcs.baidu.com/file/abc?sh=1#isVideo=true##threads=10#',
+          '原代本',
+          'http://127.0.0.1:7777/?url=https%3A%2F%2Fd.pcs.baidu.com%2Ffile%2Fabc',
+        ],
+        'header': {'User-Agent': 'netdisk;P2SP;2.2.91.136;android-android;'},
+      }),
+    );
+    final api = VideoApi(client: client);
+
+    final resolution = await api.resolvePlay(
+      _dsSource(),
+      line: const PlayLine(name: '百度#1', flag: '百度#1', episodes: []),
+      episode: const Episode(title: '正片', url: 'pid-1'),
+    );
+
+    expect(resolution.url, 'https://d.pcs.baidu.com/file/abc?sh=1');
+    expect(resolution.needsParse, isFalse);
+    expect(resolution.headers['User-Agent'], contains('netdisk'));
+  });
+
+  test('explains when a netdisk line needs an unsupported parser', () async {
+    final client = MockClient(
+      (request) async => _json({'parse': 1, 'jx': 1}),
+    );
+    final api = VideoApi(client: client);
+
+    await expectLater(
+      api.resolvePlay(
+        _dsSource(),
+        line: const PlayLine(name: '优汐#1', flag: '优汐#1', episodes: []),
+        episode: const Episode(title: '正片', url: 'pid-1'),
+      ),
+      throwsA(
+        predicate((Object error) => error.toString().contains('切换其他线路')),
+      ),
+    );
+  });
 }

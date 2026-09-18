@@ -252,7 +252,67 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
   }
 
   /// DS 源的分集值是服务端 play id，播放前需要换取真实地址与请求头。
+  ///
+  /// 网盘类源的部分线路依赖账号解析，当前线路拿不到地址时自动改用其他线路
+  /// （例如「木偶[盘]」中可直连的百度线路）。
   Future<PlayResolution> _resolveEpisode(Episode episode) async {
+    final detail = _detail;
+    final lineIndex = _lineIndex.clamp(
+      0,
+      detail == null || detail.playLines.isEmpty
+          ? 0
+          : detail.playLines.length - 1,
+    );
+    try {
+      return await _resolveOnLine(lineIndex, episode);
+    } catch (error) {
+      final alternative = await _resolveOnOtherLine(
+        detail,
+        episode,
+        lineIndex,
+      );
+      if (alternative == null) {
+        rethrow;
+      }
+      return alternative;
+    }
+  }
+
+  /// 依次尝试其他线路，成功后把当前线路切过去以便选集面板保持一致。
+  Future<PlayResolution?> _resolveOnOtherLine(
+    MediaDetail? detail,
+    Episode episode,
+    int currentLineIndex,
+  ) async {
+    if (detail == null || _closing) {
+      return null;
+    }
+    for (var index = 0; index < detail.playLines.length; index++) {
+      if (index == currentLineIndex) {
+        continue;
+      }
+      final line = detail.playLines[index];
+      if (line.episodes.isEmpty) {
+        continue;
+      }
+      final candidate =
+          line.episodes[_episodeIndex.clamp(0, line.episodes.length - 1)];
+      try {
+        final resolution = await _resolveOnLine(index, candidate);
+        if (!mounted || _closing) {
+          return null;
+        }
+        setState(() => _lineIndex = index);
+        _syncEpisodeTitle();
+        return resolution;
+      } catch (_) {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  Future<PlayResolution> _resolveOnLine(int lineIndex, Episode episode) async {
     final detail = _detail;
     final mediaRepo = _mediaRepo;
     if (detail == null || mediaRepo == null || detail.playLines.isEmpty) {
@@ -263,8 +323,10 @@ class _PlayerPageState extends ConsumerState<PlayerPage> {
     if (source == null) {
       throw Exception('影视源不存在');
     }
-    final line =
-        detail.playLines[_lineIndex.clamp(0, detail.playLines.length - 1)];
+    final line = detail.playLines[lineIndex.clamp(
+      0,
+      detail.playLines.length - 1,
+    )];
     final resolution = await mediaRepo.resolvePlay(source, line, episode);
     if (!resolution.needsParse) {
       return resolution;

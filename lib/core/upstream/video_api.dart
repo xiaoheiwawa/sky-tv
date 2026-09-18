@@ -111,14 +111,9 @@ class VideoApi {
       'play': episode.url,
       if (line.flag.isNotEmpty) 'flag': line.flag,
     });
-    final url = _text(json['url']);
-    if (!_isHttpUrl(url)) {
-      final message = _text(json['msg']);
-      throw Exception(
-        message.isEmpty
-            ? '${source.name} 未返回有效播放地址'
-            : '${source.name}：$message',
-      );
+    final url = _playUrl(json['url']);
+    if (url == null) {
+      throw Exception('${source.name}：${_playFailureMessage(json)}');
     }
     return PlayResolution(
       url: url,
@@ -248,6 +243,61 @@ bool _needsParser(Map<String, Object?> json) {
     }
   }
   return false;
+}
+
+/// `play` 接口没有给出可播放地址时的提示文案。
+String _playFailureMessage(Map<String, Object?> json) {
+  final message = _text(json['msg']);
+  if (message.isNotEmpty) {
+    return message;
+  }
+  if (_needsParser(json)) {
+    return '服务端要求第三方解析但未返回直链，可切换其他线路';
+  }
+  return '未返回有效播放地址';
+}
+
+/// `play` 接口的播放地址。
+///
+/// 网盘类源返回的是 `[名称, 地址, 名称, 地址]` 数组，且常附带一条
+/// `http://127.0.0.1:<端口>/` 的本机代理地址（依赖电脑端服务，盒子上不可用），
+/// 这里取第一条可直连的地址，并优先选择带媒体扩展名的。
+String? _playUrl(Object? value) {
+  final candidates = switch (value) {
+    final String item => <String>[item],
+    final List<Object?> items => items.whereType<String>().toList(),
+    _ => const <String>[],
+  };
+  String? fallback;
+  for (final candidate in candidates) {
+    final url = _cleanPlayUrl(candidate);
+    if (url == null) {
+      continue;
+    }
+    if (_isDirectMediaUrl(url)) {
+      return url;
+    }
+    fallback ??= url;
+  }
+  return fallback;
+}
+
+/// 去掉 TVBox 追加在地址尾部的 `#isVideo=true##threads=10#` 标记，
+/// 并过滤只能在电脑上使用的本机代理地址。
+String? _cleanPlayUrl(String value) {
+  var text = value.trim();
+  final marker = text.indexOf('#');
+  if (marker > 0) {
+    text = text.substring(0, marker);
+  }
+  if (!_isHttpUrl(text)) {
+    return null;
+  }
+  final host = Uri.tryParse(text)?.host ?? '';
+  if (const ['127.0.0.1', 'localhost', '0.0.0.0', '::1', '[::1]'].contains(host)) {
+    return null;
+  }
+  return text;
 }
 
 bool _isHttpUrl(String value) =>
