@@ -186,6 +186,8 @@ AGENTS.md                     指向 ./docs/docs.md
 - 上游请求集中在 `VideoApi`（`core/upstream/video_api.dart`）；两种协议字段同族，响应解析复用 `MacCmsParser`。
 - 源本地读写、订阅拉取、测速集中在 `SourceRepository`。
 - `SourcesPage` 同时承担**浏览**（源切换、分类预览、进详情/分类）和**管理**（导入 JSON / TVBox 配置、订阅 URL、测速、启用/删除）；管理入口在 AppBar「源管理」。
+- 当前源全局唯一且持久化（`current_source_id`，`SettingsRepository`）；`activeSourceProvider` 负责解析「当前生效的源」，记录失效或已禁用时回退到第一个启用源；切换统一走 `selectCurrentSource()`（写偏好 + 刷新首页）。
+- 换源统一走 `features/sources/source_picker.dart` 的选择器：关键字过滤 + 1/2/3/4 列切换 + 点击条目即切换。入口：移动端浏览区顶部的当前源条、宽屏左侧栏顶部按钮、AppBar「换源」。源数量可达数千，源列表必须支持搜索，不使用横向 chip 列表。
 - 直接粘贴 JSON 导入的源**不会**写入 `source_subscriptions`，因此不参与自动订阅刷新。
 
 ### DS（drpy-node / T4）源
@@ -214,7 +216,7 @@ AGENTS.md                     指向 ./docs/docs.md
 
 - 搜索：对启用源并发请求，批次大小与并发上限见 `MediaRepository` 常量；结果以 `Stream<SearchEvent>` 推送。
 - 详情、搜索、分类预览、首页推荐均有内存缓存，带条目上限与 TTL。
-- 首页发现（`homeFeedProvider`）：优先续看所在源，最多尝试 3 个源；单次拉取拆成竖版焦点与「为你推荐」。主路径 `latestVideos`（`videolist&pg=1`），空池回退 `recentVideos(h=72)`；有海报、排除续看/收藏；焦点最多 5、推荐最多 8，同源去重；10 分钟内存缓存。
+- 首页发现（`homeFeedProvider`）：优先当前源，其次续看所在源，最多尝试 3 个源；单次拉取拆成竖版焦点与「为你推荐」。主路径 `latestVideos`（`videolist&pg=1`），空池回退 `recentVideos(h=72)`；有海报、排除续看/收藏；焦点最多 5、推荐最多 8，同源去重；10 分钟内存缓存。
 - 分类列表持久化在 `source_categories` 表；预览行在 `categoryPreviewRowsProvider`。
 - 收藏、续看、最近搜索关键词持久化在 sqlite；续看主键为 `(source_id, media_id)`。
 

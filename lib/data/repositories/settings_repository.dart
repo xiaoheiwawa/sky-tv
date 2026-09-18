@@ -6,6 +6,7 @@ class SettingsRepository {
 
   static const _themeModeKey = 'theme_mode';
   static const _customUserAgentKey = 'custom_user_agent';
+  static const _currentSourceKey = 'current_source_id';
 
   final SharedPreferences _preferences;
 
@@ -31,5 +32,18 @@ class SettingsRepository {
       return _preferences.remove(_customUserAgentKey);
     }
     return _preferences.setString(_customUserAgentKey, normalized);
+  }
+
+  String? currentSourceId() {
+    final value = _preferences.getString(_currentSourceKey)?.trim();
+    return value == null || value.isEmpty ? null : value;
+  }
+
+  Future<void> setCurrentSourceId(String sourceId) {
+    final normalized = sourceId.trim();
+    if (normalized.isEmpty) {
+      return _preferences.remove(_currentSourceKey);
+    }
+    return _preferences.setString(_currentSourceKey, normalized);
   }
 }

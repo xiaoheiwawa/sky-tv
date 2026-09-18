@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/upstream/video_api.dart';
 import '../../core/models/media_models.dart';
 import '../../core/models/parse_rule.dart';
+import '../../core/models/video_source.dart';
 import '../../core/upstream/parse_resolver.dart';
 import 'iptv_repository.dart';
 import '../storage/app_database.dart';
@@ -101,6 +102,33 @@ final sourcesProvider = FutureProvider.autoDispose((ref) async {
   return repo.sources();
 });
 
+final currentSourceIdProvider = FutureProvider.autoDispose<String?>((
+  ref,
+) async {
+  final repo = await ref.watch(settingsRepositoryProvider.future);
+  return repo.currentSourceId();
+});
+
+final activeSourceProvider = FutureProvider.autoDispose<VideoSource?>((
+  ref,
+) async {
+  final sources = await ref.watch(sourcesProvider.future);
+  final selectedId = await ref.watch(currentSourceIdProvider.future);
+  final mediaRepo = await ref.watch(mediaRepositoryProvider.future);
+  final enabled = mediaRepo.enabledSources(sources);
+  if (enabled.isEmpty) {
+    return null;
+  }
+  return mediaRepo.findSource(enabled, selectedId ?? '') ?? enabled.first;
+});
+
+Future<void> selectCurrentSource(WidgetRef ref, String sourceId) async {
+  final repo = await ref.read(settingsRepositoryProvider.future);
+  await repo.setCurrentSourceId(sourceId);
+  ref.invalidate(currentSourceIdProvider);
+  ref.invalidate(homeFeedProvider);
+}
+
 final sourceCategoriesProvider = FutureProvider.autoDispose
     .family<List<SourceCategory>, String>((ref, sourceId) async {
       final sources = await ref.watch(sourcesProvider.future);
@@ -149,7 +177,8 @@ final homeFeedProvider = FutureProvider.autoDispose<HomeFeed>((ref) async {
   if (mediaRepo.enabledSources(sources).isEmpty) {
     return HomeFeed.empty;
   }
-  return mediaRepo.homeFeed(sources);
+  final selectedId = await ref.watch(currentSourceIdProvider.future);
+  return mediaRepo.homeFeed(sources, preferredSourceId: selectedId);
 });
 
 class HomeData {

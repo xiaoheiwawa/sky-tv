@@ -11,6 +11,7 @@ import '../../data/repositories/app_providers.dart';
 import '../../ui/widgets/app_dialogs.dart';
 import '../../ui/widgets/poster_row.dart';
 import '../../ui/widgets/state_views.dart';
+import 'source_picker.dart';
 
 class SourcesPage extends ConsumerStatefulWidget {
   const SourcesPage({super.key});
@@ -20,8 +21,6 @@ class SourcesPage extends ConsumerStatefulWidget {
 }
 
 class _SourcesPageState extends ConsumerState<SourcesPage> {
-  String? _selectedSourceId;
-
   @override
   void initState() {
     super.initState();
@@ -45,10 +44,38 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
   @override
   Widget build(BuildContext context) {
     final sources = ref.watch(sourcesProvider);
+    final activeSource = ref
+        .watch(activeSourceProvider)
+        .maybeWhen(data: (source) => source, orElse: () => null);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('影视'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('影视'),
+            if (activeSource != null)
+              Text(
+                activeSource.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
         actions: [
+          IconButton(
+            onPressed: sources.maybeWhen(
+              data: (items) => items.any((source) => !source.disabled)
+                  ? () => unawaited(_openSourcePicker())
+                  : null,
+              orElse: () => null,
+            ),
+            icon: const Icon(Icons.swap_horiz_rounded),
+            tooltip: '换源',
+          ),
           IconButton(
             onPressed: sources.maybeWhen(
               data: (items) => items.isEmpty ? null : _showManageSheet,
@@ -61,6 +88,12 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
       ),
       body: sources.when(
         data: (items) {
+          final mediaRepo = ref
+              .watch(mediaRepositoryProvider)
+              .maybeWhen(data: (repo) => repo, orElse: () => null);
+          if (mediaRepo == null) {
+            return const LoadingState(message: '正在准备影视源...');
+          }
           if (items.isEmpty) {
             return EmptyState(
               icon: Icons.movie_filter_rounded,
@@ -73,24 +106,32 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
               ),
             );
           }
-          final mediaRepo = ref
-              .watch(mediaRepositoryProvider)
-              .maybeWhen(data: (repo) => repo, orElse: () => null);
-          final enabled =
-              mediaRepo?.enabledSources(items) ?? const <VideoSource>[];
-          _syncSelectedSource(enabled);
+          final enabled = mediaRepo.enabledSources(items);
+          if (enabled.isEmpty) {
+            return EmptyState(
+              icon: Icons.toggle_off_rounded,
+              title: '还没有启用的影视源',
+              message: '在源管理中启用影视源后即可浏览分类内容。',
+              action: FilledButton(
+                onPressed: _showManageSheet,
+                child: const Text('打开源管理'),
+              ),
+            );
+          }
+          if (activeSource == null) {
+            return const LoadingState(message: '正在准备影视源...');
+          }
           return LayoutBuilder(
             builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 1000;
-              if (wide) {
+              if (constraints.maxWidth >= 1000) {
                 return _DesktopBrowse(
                   sources: items,
-                  enabled: enabled,
-                  selectedSourceId: _selectedSourceId,
+                  sourceId: activeSource.sourceId,
                   onSourceSelected: (value) =>
-                      setState(() => _selectedSourceId = value),
+                      unawaited(selectCurrentSource(ref, value)),
+                  onOpenPicker: () => unawaited(_openSourcePicker()),
                   onManage: _showManageSheet,
-                  onRefresh: () => _refreshBrowse(),
+                  onRefresh: _refreshBrowse,
                   onOpenDetail: (item) =>
                       context.push(SkyRoutes.detail(item.sourceId, item.id)),
                   onOpenCategory: (sourceId, categoryId) =>
@@ -98,12 +139,10 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
                 );
               }
               return _MobileBrowse(
-                enabled: enabled,
-                selectedSourceId: _selectedSourceId,
-                onSourceSelected: (value) =>
-                    setState(() => _selectedSourceId = value),
-                onManage: _showManageSheet,
-                onRefresh: () => _refreshBrowse(),
+                sourceId: activeSource.sourceId,
+                sourceName: activeSource.name,
+                onOpenPicker: () => unawaited(_openSourcePicker()),
+                onRefresh: _refreshBrowse,
                 onOpenDetail: (item) =>
                     context.push(SkyRoutes.detail(item.sourceId, item.id)),
                 onOpenCategory: (sourceId, categoryId) =>
@@ -118,36 +157,37 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
     );
   }
 
-  void _syncSelectedSource(List<VideoSource> enabled) {
-    if (enabled.isEmpty) {
-      if (_selectedSourceId != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            setState(() => _selectedSourceId = null);
-          }
-        });
-      }
-      return;
-    }
-    final current = _selectedSourceId;
-    final stillValid =
-        current != null && enabled.any((s) => s.sourceId == current);
-    if (!stillValid) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() => _selectedSourceId = enabled.first.sourceId);
-        }
-      });
-    }
-  }
-
   Future<void> _refreshBrowse() async {
-    final sourceId = _selectedSourceId;
+    final sourceId = ref
+        .read(activeSourceProvider)
+        .maybeWhen(data: (source) => source?.sourceId, orElse: () => null);
     ref.invalidate(sourcesProvider);
     if (sourceId != null) {
       ref.invalidate(sourceCategoriesProvider(sourceId));
       ref.invalidate(categoryPreviewRowsProvider(sourceId));
     }
+  }
+
+  Future<void> _openSourcePicker() async {
+    final sources = await ref.read(sourcesProvider.future);
+    final mediaRepo = await ref.read(mediaRepositoryProvider.future);
+    if (!mounted) {
+      return;
+    }
+    final enabled = mediaRepo.enabledSources(sources);
+    if (enabled.isEmpty) {
+      return;
+    }
+    final selectedId = ref
+        .read(activeSourceProvider)
+        .maybeWhen(data: (source) => source?.sourceId, orElse: () => null);
+    await showSourcePicker(
+      context,
+      sources: enabled,
+      selectedId: selectedId,
+      onSelected: (value) => unawaited(selectCurrentSource(ref, value)),
+      onManage: () => unawaited(_showManageSheet()),
+    );
   }
 
   Future<void> _showManageSheet() {
@@ -224,34 +264,23 @@ class _SourcesPageState extends ConsumerState<SourcesPage> {
 
 class _MobileBrowse extends ConsumerWidget {
   const _MobileBrowse({
-    required this.enabled,
-    required this.selectedSourceId,
-    required this.onSourceSelected,
-    required this.onManage,
+    required this.sourceId,
+    required this.sourceName,
+    required this.onOpenPicker,
     required this.onRefresh,
     required this.onOpenDetail,
     required this.onOpenCategory,
   });
 
-  final List<VideoSource> enabled;
-  final String? selectedSourceId;
-  final ValueChanged<String> onSourceSelected;
-  final VoidCallback onManage;
+  final String sourceId;
+  final String sourceName;
+  final VoidCallback onOpenPicker;
   final Future<void> Function() onRefresh;
   final ValueChanged<MediaItem> onOpenDetail;
   final void Function(String sourceId, String categoryId) onOpenCategory;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (enabled.isEmpty) {
-      return EmptyState(
-        icon: Icons.toggle_off_rounded,
-        title: '还没有启用的影视源',
-        message: '在源管理中启用影视源后即可浏览分类内容。',
-        action: FilledButton(onPressed: onManage, child: const Text('打开源管理')),
-      );
-    }
-    final sourceId = selectedSourceId ?? enabled.first.sourceId;
     return RefreshIndicator(
       onRefresh: onRefresh,
       child: CustomScrollView(
@@ -259,11 +288,7 @@ class _MobileBrowse extends ConsumerWidget {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-              child: _SourceChipRow(
-                sources: enabled,
-                selectedId: sourceId,
-                onSelected: onSourceSelected,
-              ),
+              child: _SourceSwitchBar(name: sourceName, onTap: onOpenPicker),
             ),
           ),
           ..._BrowseContent(
@@ -278,12 +303,12 @@ class _MobileBrowse extends ConsumerWidget {
   }
 }
 
-class _DesktopBrowse extends ConsumerWidget {
+class _DesktopBrowse extends ConsumerStatefulWidget {
   const _DesktopBrowse({
     required this.sources,
-    required this.enabled,
-    required this.selectedSourceId,
+    required this.sourceId,
     required this.onSourceSelected,
+    required this.onOpenPicker,
     required this.onManage,
     required this.onRefresh,
     required this.onOpenDetail,
@@ -291,50 +316,121 @@ class _DesktopBrowse extends ConsumerWidget {
   });
 
   final List<VideoSource> sources;
-  final List<VideoSource> enabled;
-  final String? selectedSourceId;
+  final String sourceId;
   final ValueChanged<String> onSourceSelected;
+  final VoidCallback onOpenPicker;
   final VoidCallback onManage;
   final Future<void> Function() onRefresh;
   final ValueChanged<MediaItem> onOpenDetail;
   final void Function(String sourceId, String categoryId) onOpenCategory;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final sourceId = selectedSourceId;
+  ConsumerState<_DesktopBrowse> createState() => _DesktopBrowseState();
+}
+
+class _DesktopBrowseState extends ConsumerState<_DesktopBrowse> {
+  final TextEditingController _controller = TextEditingController();
+  String _keyword = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  List<VideoSource> _filtered(List<VideoSource> sources) {
+    final keyword = _keyword.trim().toLowerCase();
+    if (keyword.isEmpty) {
+      return sources;
+    }
+    return sources
+        .where(
+          (source) =>
+              source.name.toLowerCase().contains(keyword) ||
+              source.apiUrl.toLowerCase().contains(keyword),
+        )
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     final mediaRepo = ref
         .watch(mediaRepositoryProvider)
         .maybeWhen(data: (repo) => repo, orElse: () => null);
-    final ordered = mediaRepo?.orderedSources(sources) ?? sources;
+    final ordered = mediaRepo?.orderedSources(widget.sources) ?? widget.sources;
+    final visible = _filtered(ordered);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 280,
+          width: 300,
           child: ColoredBox(
-            color: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+            color: scheme.surfaceContainerHigh,
+            child: Column(
               children: [
-                Text(
-                  '我的源',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w800,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 4, 0),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '我的源',
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w800),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: widget.onOpenPicker,
+                        icon: const Icon(Icons.swap_horiz_rounded),
+                        tooltip: '换源',
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                for (final source in ordered) ...[
-                  _SourceRailTile(
-                    source: source,
-                    selected: source.sourceId == sourceId,
-                    onTap: source.disabled
-                        ? null
-                        : () => onSourceSelected(source.sourceId),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: TextField(
+                    controller: _controller,
+                    onChanged: (value) => setState(() => _keyword = value),
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: '搜索源',
+                      prefixIcon: Icon(Icons.search_rounded, size: 18),
+                      border: OutlineInputBorder(),
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                ],
+                ),
+                Expanded(
+                  child: visible.isEmpty
+                      ? const EmptyState(
+                          icon: Icons.search_off_rounded,
+                          title: '没有匹配的源',
+                          message: '换个关键字试试。',
+                          compact: true,
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                          itemCount: visible.length,
+                          itemBuilder: (context, index) {
+                            final source = visible[index];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: _SourceRailTile(
+                                source: source,
+                                selected: source.sourceId == widget.sourceId,
+                                onTap: source.disabled
+                                    ? null
+                                    : () => widget.onSourceSelected(
+                                        source.sourceId,
+                                      ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
                 IconButton(
-                  onPressed: onManage,
+                  onPressed: widget.onManage,
                   icon: const Icon(Icons.tune_rounded),
                   tooltip: '源管理',
                 ),
@@ -344,27 +440,17 @@ class _DesktopBrowse extends ConsumerWidget {
         ),
         const VerticalDivider(width: 1),
         Expanded(
-          child: enabled.isEmpty || sourceId == null
-              ? EmptyState(
-                  icon: Icons.toggle_off_rounded,
-                  title: '还没有启用的影视源',
-                  message: '在左侧源管理中启用影视源后即可浏览分类内容。',
-                  action: FilledButton(
-                    onPressed: onManage,
-                    child: const Text('打开源管理'),
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: onRefresh,
-                  child: CustomScrollView(
-                    slivers: _BrowseContent(
-                      sourceId: sourceId,
-                      crossAxisCount: 4,
-                      onOpenDetail: onOpenDetail,
-                      onOpenCategory: onOpenCategory,
-                    ).buildSlivers(context, ref),
-                  ),
-                ),
+          child: RefreshIndicator(
+            onRefresh: widget.onRefresh,
+            child: CustomScrollView(
+              slivers: _BrowseContent(
+                sourceId: widget.sourceId,
+                crossAxisCount: 4,
+                onOpenDetail: widget.onOpenDetail,
+                onOpenCategory: widget.onOpenCategory,
+              ).buildSlivers(context, ref),
+            ),
+          ),
         ),
       ],
     );
@@ -505,34 +591,47 @@ class _BrowseContent {
   }
 }
 
-class _SourceChipRow extends StatelessWidget {
-  const _SourceChipRow({
-    required this.sources,
-    required this.selectedId,
-    required this.onSelected,
-  });
+class _SourceSwitchBar extends StatelessWidget {
+  const _SourceSwitchBar({required this.name, required this.onTap});
 
-  final List<VideoSource> sources;
-  final String selectedId;
-  final ValueChanged<String> onSelected;
+  final String name;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemBuilder: (context, index) {
-          final source = sources[index];
-          return ChoiceChip(
-            label: Text(source.name),
-            selected: source.sourceId == selectedId,
-            showCheckmark: false,
-            onSelected: (_) => onSelected(source.sourceId),
-          );
-        },
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemCount: sources.length,
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHigh,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+          child: Row(
+            children: [
+              Icon(Icons.swap_horiz_rounded, size: 20, color: scheme.primary),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ),
+              Text(
+                '换源',
+                style: TextStyle(
+                  color: scheme.primary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Icon(Icons.expand_more_rounded, size: 20, color: scheme.primary),
+            ],
+          ),
+        ),
       ),
     );
   }

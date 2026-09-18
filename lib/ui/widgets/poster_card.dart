@@ -1,7 +1,9 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/models/media_models.dart';
+import '../../data/repositories/app_providers.dart';
 import 'poster_fallback.dart';
 
 const densePosterGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
@@ -45,7 +47,7 @@ int posterMemCacheFor(double displayWidth, {int max = 720}) {
   return (displayWidth * ratio).ceil().clamp(88, max);
 }
 
-class PosterImage extends StatelessWidget {
+class PosterImage extends ConsumerWidget {
   const PosterImage({
     super.key,
     required this.url,
@@ -58,14 +60,21 @@ class PosterImage extends StatelessWidget {
   final BoxFit fit;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (url == null || url!.isEmpty) {
       return const PosterFallback();
     }
+    final headers = ref
+        .watch(requestHeadersProvider)
+        .maybeWhen(
+          data: (value) => value,
+          orElse: () => const <String, String>{},
+        );
     // 只约束宽度，保比例解码，避免 exact 双约束发糊。
     return CachedNetworkImage(
       imageUrl: url!,
       fit: fit,
+      httpHeaders: headers.isEmpty ? null : headers,
       memCacheWidth: memCacheWidth,
       placeholder: (_, _) => const PosterFallback(),
       errorWidget: (_, _, _) => const PosterFallback(),

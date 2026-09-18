@@ -45,6 +45,7 @@ class MediaRepository {
   static const _maxDetailCacheEntries = 400;
   static const _maxCategoryPreviewCacheEntries = 200;
   static const _maxHomeFeedCacheEntries = 20;
+  static const _maxPosterCacheEntries = 2000;
 
   final AppDatabase db;
   final VideoApi api;
@@ -52,6 +53,7 @@ class MediaRepository {
   final _detailCache = <String, _CacheEntry<MediaDetail>>{};
   final _categoryPreviewCache = <String, _CacheEntry<List<MediaItem>>>{};
   final _homeFeedCache = <String, _CacheEntry<List<MediaItem>>>{};
+  final _posterCache = <String, String>{};
 
   List<WatchRecord> watchRecords() => db.loadWatchRecords();
 
@@ -156,6 +158,7 @@ class MediaRepository {
       return cached.value;
     }
     final items = await api.search(source, keyword, 1);
+    _rememberPosters(items);
     _writeCache(
       _searchCache,
       key,
@@ -179,8 +182,10 @@ class MediaRepository {
     VideoSource source,
     String categoryId, {
     int page = 1,
-  }) {
-    return api.categoryVideos(source, categoryId, page);
+  }) async {
+    final items = await api.categoryVideos(source, categoryId, page);
+    _rememberPosters(items);
+    return items;
   }
 
   Future<List<MediaItem>> categoryPreview(
@@ -194,6 +199,7 @@ class MediaRepository {
       return cached.value;
     }
     final items = await api.categoryVideos(source, categoryId, page);
+    _rememberPosters(items);
     final preview = items.take(categoryPreviewLimit).toList();
     _writeCache(
       _categoryPreviewCache,
@@ -234,8 +240,14 @@ class MediaRepository {
     return rows;
   }
 
-  Future<HomeFeed> homeFeed(List<VideoSource> sources) async {
-    final candidates = _recommendSourceCandidates(sources);
+  Future<HomeFeed> homeFeed(
+    List<VideoSource> sources, {
+    String? preferredSourceId,
+  }) async {
+    final candidates = _recommendSourceCandidates(
+      sources,
+      preferredSourceId: preferredSourceId,
+    );
     if (candidates.isEmpty) {
       return HomeFeed.empty;
     }
@@ -307,6 +319,7 @@ class MediaRepository {
     final items = latest
         ? await api.latestVideos(source)
         : await api.recentVideos(source, hours: homeRecommendHours);
+    _rememberPosters(items);
     _writeCache(
       _homeFeedCache,
       key,
@@ -316,10 +329,22 @@ class MediaRepository {
     return items;
   }
 
-  List<VideoSource> _recommendSourceCandidates(List<VideoSource> sources) {
+  List<VideoSource> _recommendSourceCandidates(
+    List<VideoSource> sources, {
+    String? preferredSourceId,
+  }) {
     final enabled = enabledSources(sources);
     if (enabled.isEmpty) {
       return const [];
+    }
+    final preferred = preferredSourceId == null
+        ? null
+        : findSource(enabled, preferredSourceId);
+    if (preferred != null) {
+      return [
+        preferred,
+        ...enabled.where((source) => source.sourceId != preferred.sourceId),
+      ];
     }
     final records = watchRecords();
     if (records.isEmpty) {
@@ -371,7 +396,8 @@ class MediaRepository {
     if (cached != null && !cached.expired) {
       return cached.value;
     }
-    final detail = await api.detail(source, mediaId);
+    final raw = await api.detail(source, mediaId);
+    final detail = raw == null ? null : _withPoster(raw, key);
     if (detail != null) {
       _writeCache(
         _detailCache,
@@ -381,6 +407,43 @@ class MediaRepository {
       );
     }
     return detail;
+  }
+
+  /// 部分源的详情接口不返回封面（drpy 常见），回退到列表里记录过的海报。
+  MediaDetail _withPoster(MediaDetail detail, String key) {
+    final poster = detail.poster;
+    if (poster != null && poster.isNotEmpty) {
+      _posterCache[key] = poster;
+      return detail;
+    }
+    final fallback = _posterCache[key];
+    if (fallback == null) {
+      return detail;
+    }
+    return MediaDetail(
+      id: detail.id,
+      sourceId: detail.sourceId,
+      sourceName: detail.sourceName,
+      title: detail.title,
+      poster: fallback,
+      year: detail.year,
+      category: detail.category,
+      description: detail.description,
+      playLines: detail.playLines,
+    );
+  }
+
+  void _rememberPosters(Iterable<MediaItem> items) {
+    for (final item in items) {
+      final poster = item.poster;
+      if (poster == null || poster.isEmpty) {
+        continue;
+      }
+      _posterCache['${item.sourceId}|${item.id}'] = poster;
+    }
+    while (_posterCache.length > _maxPosterCacheEntries) {
+      _posterCache.remove(_posterCache.keys.first);
+    }
   }
 
   /// 解析分集播放地址；DS 源需要向服务端换取真实地址与请求头。
