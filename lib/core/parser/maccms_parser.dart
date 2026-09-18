@@ -52,9 +52,17 @@ class MacCmsParser {
     throw const FormatException('MacCMS 响应缺少 vod_id 或 vod_name');
   }
 
-  MediaDetail? parseDetail(Map<String, Object?> json, VideoSource source) {
+  /// 解析详情。
+  ///
+  /// 网盘类（netdisk）源的详情响应通常不返回 `vod_id`，只回 `vod_name` 等内容，
+  /// 这时用请求时使用的 [fallbackId] 兜底，否则详情会被判为无效。
+  MediaDetail? parseDetail(
+    Map<String, Object?> json,
+    VideoSource source, {
+    String? fallbackId,
+  }) {
     for (final item in _list(json)) {
-      final media = _mediaItem(item, source);
+      final media = _mediaItem(item, source, fallbackId: fallbackId);
       if (media == null) {
         continue;
       }
@@ -85,8 +93,11 @@ class MacCmsParser {
     return raw.whereType<Map>().toList();
   }
 
-  MediaItem? _mediaItem(Map item, VideoSource source) {
-    final id = _string(item['vod_id'] ?? item['id']);
+  MediaItem? _mediaItem(Map item, VideoSource source, {String? fallbackId}) {
+    var id = _string(item['vod_id'] ?? item['id']);
+    if (id.isEmpty) {
+      id = fallbackId ?? '';
+    }
     final title = _string(item['vod_name'] ?? item['name']);
     if (id.isEmpty || title.isEmpty || _isPlaceholder(item)) {
       return null;

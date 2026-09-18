@@ -85,6 +85,7 @@ class VideoApi {
     final detail = _parser.parseDetail(
       await _get(source, _detailQuery(source, mediaId)),
       source,
+      fallbackId: mediaId,
     );
     if (detail != null || source.kind == SourceKind.ds) {
       return detail;
@@ -93,6 +94,7 @@ class VideoApi {
     return _parser.parseDetail(
       await _get(source, {'ac': 'detail', 'ids': mediaId}),
       source,
+      fallbackId: mediaId,
     );
   }
 
