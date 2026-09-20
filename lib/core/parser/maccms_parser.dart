@@ -65,7 +65,7 @@ class MacCmsParser {
     } on FormatException catch (error) {
       // 翻页到「无数据」占位页时视为没有更多内容，优雅停在上一页；
       // 而不是把整页判为源不可用中断翻页（参照 webhtv 空列表优雅停止策略）。
-      if (error.message?.contains('无数据') ?? false) {
+      if (error.message.contains('无数据')) {
         return MediaPage(items: const [], pageCount: _pageCount(json));
       }
       rethrow;
