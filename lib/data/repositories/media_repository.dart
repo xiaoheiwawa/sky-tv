@@ -178,14 +178,15 @@ class MediaRepository {
     return categories;
   }
 
-  Future<List<MediaItem>> categoryVideos(
+  /// 分类列表分页结果，`pageCount` 来自上游，用于判断是否还能继续翻页。
+  Future<MediaPage> categoryPage(
     VideoSource source,
     String categoryId, {
     int page = 1,
   }) async {
-    final items = await api.categoryVideos(source, categoryId, page);
-    _rememberPosters(items);
-    return items;
+    final result = await api.categoryPage(source, categoryId, page);
+    _rememberPosters(result.items);
+    return result;
   }
 
   Future<List<MediaItem>> categoryPreview(
@@ -198,9 +199,9 @@ class MediaRepository {
     if (cached != null && !cached.expired) {
       return cached.value;
     }
-    final items = await api.categoryVideos(source, categoryId, page);
-    _rememberPosters(items);
-    final preview = items.take(categoryPreviewLimit).toList();
+    final result = await api.categoryPage(source, categoryId, page);
+    _rememberPosters(result.items);
+    final preview = result.items.take(categoryPreviewLimit).toList();
     _writeCache(
       _categoryPreviewCache,
       key,

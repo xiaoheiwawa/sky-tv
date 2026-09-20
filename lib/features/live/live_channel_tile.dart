@@ -3,23 +3,34 @@ import 'package:flutter/material.dart';
 
 import '../../core/models/iptv_models.dart';
 
-class LiveChannelTile extends StatelessWidget {
+class LiveChannelTile extends StatefulWidget {
   const LiveChannelTile({
     super.key,
     required this.channel,
     required this.onTap,
     this.selected = false,
     this.dark = false,
+    this.autofocus = false,
   });
 
   final IptvChannel channel;
   final VoidCallback onTap;
   final bool selected;
   final bool dark;
+  final bool autofocus;
+
+  @override
+  State<LiveChannelTile> createState() => _LiveChannelTileState();
+}
+
+class _LiveChannelTileState extends State<LiveChannelTile> {
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final dark = widget.dark;
+    final selected = widget.selected;
     final foreground = dark ? Colors.white : scheme.onSurface;
     final secondary = dark ? Colors.white70 : scheme.onSurfaceVariant;
     final selectedFill = dark
@@ -27,52 +38,66 @@ class LiveChannelTile extends StatelessWidget {
         : scheme.primaryContainer.withValues(alpha: 0.55);
 
     const radius = BorderRadius.all(Radius.circular(8));
-    return Material(
-      color: selected ? selectedFill : Colors.transparent,
-      borderRadius: radius,
-      child: InkWell(
-        onTap: onTap,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      child: Material(
+        color: selected ? selectedFill : Colors.transparent,
         borderRadius: radius,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: Row(
-            children: [
-              _ChannelLogo(url: channel.logo, dark: dark),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      channel.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: foreground,
-                        fontSize: 14,
-                        fontWeight: selected
-                            ? FontWeight.w600
-                            : FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      channel.group ?? '未分组',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: secondary, fontSize: 11),
-                    ),
-                  ],
-                ),
+        child: InkWell(
+          autofocus: widget.autofocus,
+          onFocusChange: (value) => setState(() => _focused = value),
+          onTap: widget.onTap,
+          borderRadius: radius,
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              border: Border.all(
+                color: _focused ? scheme.primary : Colors.transparent,
+                width: 2,
               ),
-              Icon(
-                selected
-                    ? Icons.radio_button_checked_rounded
-                    : Icons.play_arrow_rounded,
-                size: 20,
-                color: dark ? Colors.white70 : scheme.primary,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Row(
+                children: [
+                  _ChannelLogo(url: widget.channel.logo, dark: dark),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.channel.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: foreground,
+                            fontSize: 14,
+                            fontWeight: selected
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.channel.group ?? '未分组',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: secondary, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    selected
+                        ? Icons.radio_button_checked_rounded
+                        : Icons.play_arrow_rounded,
+                    size: 20,
+                    color: dark ? Colors.white70 : scheme.primary,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

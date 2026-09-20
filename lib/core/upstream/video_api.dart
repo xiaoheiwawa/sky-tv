@@ -50,13 +50,14 @@ class VideoApi {
     return _parser.parseMediaList(json, source);
   }
 
-  Future<List<MediaItem>> categoryVideos(
+  /// 分类列表分页结果，含上游返回的总页数。
+  Future<MediaPage> categoryPage(
     VideoSource source,
     String categoryId,
     int page,
   ) async {
     final json = await _get(source, _categoryQuery(source, categoryId, page));
-    return _parser.parseMediaList(json, source);
+    return _parser.parseMediaPage(json, source);
   }
 
   Future<List<MediaItem>> recentVideos(

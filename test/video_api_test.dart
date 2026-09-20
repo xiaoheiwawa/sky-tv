@@ -88,6 +88,7 @@ void main() {
         }
         if (query.containsKey('t')) {
           return _json({
+            'pagecount': 3,
             'list': [
               {'vod_id': '3', 'vod_name': '分类结果'},
             ],
@@ -107,7 +108,11 @@ void main() {
 
       expect((await api.categories(source)).single.name, '电影');
       expect((await api.latestVideos(source)).single.title, '首页推荐');
-      expect((await api.categoryVideos(source, '1', 2)).single.title, '分类结果');
+      final page = await api.categoryPage(source, '1', 2);
+      expect(page.items.single.title, '分类结果');
+      expect(page.pageCount, 3);
+      expect(page.hasMoreAfter(2), isTrue);
+      expect(page.hasMoreAfter(3), isFalse);
       expect((await api.search(source, '测试', 1)).single.title, '搜索结果');
 
       // 0/1 是首页请求，2 是分类，3 是搜索。

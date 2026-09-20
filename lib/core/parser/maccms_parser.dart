@@ -52,6 +52,36 @@ class MacCmsParser {
     throw const FormatException('MacCMS 响应缺少 vod_id 或 vod_name');
   }
 
+  /// 解析分页列表，并读取上游的总页数（MacCMS 与 drpy 都返回 `pagecount`）。
+  ///
+  /// 上游不给总页数时 [MediaPage.pageCount] 为 null，调用方只能按本页是否有
+  /// 数据判断后面还有没有内容。
+  MediaPage parseMediaPage(Map<String, Object?> json, VideoSource source) {
+    try {
+      return MediaPage(
+        items: parseMediaList(json, source),
+        pageCount: _pageCount(json),
+      );
+    } on FormatException catch (error) {
+      // 翻页到「无数据」占位页时视为没有更多内容，优雅停在上一页；
+      // 而不是把整页判为源不可用中断翻页（参照 webhtv 空列表优雅停止策略）。
+      if (error.message?.contains('无数据') ?? false) {
+        return MediaPage(items: const [], pageCount: _pageCount(json));
+      }
+      rethrow;
+    }
+  }
+
+  int? _pageCount(Map<String, Object?> json) {
+    for (final key in const ['pagecount', 'page_count', 'totalpage']) {
+      final value = int.tryParse(_string(json[key]));
+      if (value != null && value > 0) {
+        return value;
+      }
+    }
+    return null;
+  }
+
   /// 解析详情。
   ///
   /// 网盘类（netdisk）源的详情响应通常不返回 `vod_id`，只回 `vod_name` 等内容，

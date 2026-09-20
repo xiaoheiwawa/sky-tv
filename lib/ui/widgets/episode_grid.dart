@@ -4,8 +4,15 @@ const episodeGridSpacing = 10.0;
 const episodeGridMinTileWidth = 108.0;
 const episodeGridTileHeight = 38.0;
 
-int episodeGridColumnsFor(double width) {
-  return (width / episodeGridMinTileWidth).floor().clamp(3, 6);
+/// 电视上选集按钮放大，遥控器看得清也更容易聚焦。
+const tvEpisodeGridMinTileWidth = 150.0;
+const tvEpisodeGridTileHeight = 48.0;
+
+int episodeGridColumnsFor(
+  double width, {
+  double minTileWidth = episodeGridMinTileWidth,
+}) {
+  return (width / minTileWidth).floor().clamp(3, 6);
 }
 
 /// 虚拟化分集网格（必须作为 CustomScrollView / 可滚动视口的 sliver）。
@@ -15,11 +22,15 @@ class EpisodeGridSliver extends StatelessWidget {
     required this.itemCount,
     required this.itemBuilder,
     this.padding = EdgeInsets.zero,
+    this.minTileWidth = episodeGridMinTileWidth,
+    this.tileHeight = episodeGridTileHeight,
   });
 
   final int itemCount;
   final NullableIndexedWidgetBuilder itemBuilder;
   final EdgeInsetsGeometry padding;
+  final double minTileWidth;
+  final double tileHeight;
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +41,14 @@ class EpisodeGridSliver extends StatelessWidget {
       padding: padding,
       sliver: SliverLayoutBuilder(
         builder: (context, constraints) {
-          final columns = episodeGridColumnsFor(constraints.crossAxisExtent);
+          final columns = episodeGridColumnsFor(
+            constraints.crossAxisExtent,
+            minTileWidth: minTileWidth,
+          );
           return SliverGrid(
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: columns,
-              mainAxisExtent: episodeGridTileHeight,
+              mainAxisExtent: tileHeight,
               crossAxisSpacing: episodeGridSpacing,
               mainAxisSpacing: episodeGridSpacing,
             ),
@@ -52,38 +66,42 @@ class EpisodeGridSliver extends StatelessWidget {
 
 enum EpisodeChipStyle { surface, overlay }
 
-class EpisodeChip extends StatelessWidget {
+class EpisodeChip extends StatefulWidget {
   const EpisodeChip({
     super.key,
     required this.title,
     required this.selected,
     required this.onPressed,
     this.style = EpisodeChipStyle.surface,
+    this.autofocus = false,
   });
 
   final String title;
   final bool selected;
   final VoidCallback onPressed;
   final EpisodeChipStyle style;
+  final bool autofocus;
+
+  @override
+  State<EpisodeChip> createState() => _EpisodeChipState();
+}
+
+class _EpisodeChipState extends State<EpisodeChip> {
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final overlay = widget.style == EpisodeChipStyle.overlay;
+    final selected = widget.selected;
     final Color background;
     final Color textColor;
-    final BoxBorder? border;
 
-    if (style == EpisodeChipStyle.overlay) {
+    if (overlay) {
       background = selected
           ? scheme.primary.withValues(alpha: 0.12)
           : Colors.white.withValues(alpha: 0.04);
       textColor = selected ? Colors.white : Colors.white70;
-      border = Border.all(
-        color: selected
-            ? scheme.primary.withValues(alpha: 0.85)
-            : Colors.white.withValues(alpha: 0.18),
-        width: selected ? 1.5 : 1,
-      );
     } else {
       background = selected
           ? scheme.primaryContainer
@@ -91,13 +109,26 @@ class EpisodeChip extends StatelessWidget {
       textColor = selected
           ? scheme.onPrimaryContainer
           : scheme.onSurfaceVariant;
-      border = null;
     }
+
+    // 遥控器上颜色深浅不易辨认，焦点统一用主色描边。
+    final BoxBorder? border = _focused
+        ? Border.all(color: scheme.primary, width: 2)
+        : overlay
+        ? Border.all(
+            color: selected
+                ? scheme.primary.withValues(alpha: 0.85)
+                : Colors.white.withValues(alpha: 0.18),
+            width: selected ? 1.5 : 1,
+          )
+        : null;
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onPressed,
+        autofocus: widget.autofocus,
+        onFocusChange: (value) => setState(() => _focused = value),
+        onTap: widget.onPressed,
         borderRadius: BorderRadius.circular(8),
         child: Ink(
           decoration: BoxDecoration(
@@ -107,7 +138,7 @@ class EpisodeChip extends StatelessWidget {
           ),
           child: Center(
             child: Text(
-              title,
+              widget.title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,

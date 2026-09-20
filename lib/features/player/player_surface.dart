@@ -8,6 +8,9 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import 'package:volume_controller/volume_controller.dart';
 
+import '../../ui/tv/tv_mode.dart';
+import 'tv_player_controls.dart';
+
 const playerPortraitSystemUi = SystemUiOverlayStyle(
   statusBarColor: Colors.black,
   statusBarIconBrightness: Brightness.light,
@@ -67,6 +70,7 @@ class PlayerSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final player = controller.player;
     final desktop = _desktopControls(context);
+    final tv = !desktop && isTvNavigation(context);
     final mobileTheme = _mobileControlsTheme(
       context: context,
       title: title,
@@ -98,6 +102,21 @@ class PlayerSurface extends StatelessWidget {
                 onEnterFullscreen: onEnterFullscreen,
                 onExitFullscreen: onExitFullscreen,
               ),
+            )
+          : tv
+          ? Video(
+              controller: controller,
+              fit: BoxFit.contain,
+              controls: (state) => TvPlayerControls(
+                controller: controller,
+                title: title,
+                subtitle: subtitle,
+                selectorAction: selectorAction,
+                onNext: onNext,
+                onBack: onBack,
+              ),
+              onEnterFullscreen: onEnterFullscreen,
+              onExitFullscreen: onExitFullscreen,
             )
           : MaterialVideoControlsTheme(
               normal: mobileTheme.normal,

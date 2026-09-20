@@ -39,6 +39,22 @@ class CategoryPreviewRow {
   final List<MediaItem> items;
 }
 
+/// 分页列表结果：分类、搜索等接口按页返回。
+class MediaPage {
+  const MediaPage({required this.items, this.pageCount});
+
+  final List<MediaItem> items;
+
+  /// 上游返回的总页数；上游未提供时为 null，只能按本页是否有数据判断。
+  final int? pageCount;
+
+  /// [page] 页之后是否还有内容。
+  bool hasMoreAfter(int page) {
+    final count = pageCount;
+    return count == null ? items.isNotEmpty : page < count;
+  }
+}
+
 class MediaItem {
   const MediaItem({
     required this.id,

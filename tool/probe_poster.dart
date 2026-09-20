@@ -29,7 +29,11 @@ Future<void> main(List<String> args) async {
       if (categories.isEmpty) {
         return;
       }
-      final items = await api.categoryVideos(source, categories.first.id, 1);
+      final items = (await api.categoryPage(
+        source,
+        categories.first.id,
+        1,
+      )).items;
       final first = items.firstOrNull;
       if (first == null) {
         return;

@@ -46,7 +46,11 @@ Future<void> main(List<String> args) async {
         print('EMPTY  $name 无分类');
         return;
       }
-      final items = await api.categoryVideos(source, categories.first.id, 1);
+      final items = (await api.categoryPage(
+        source,
+        categories.first.id,
+        1,
+      )).items;
       if (items.isEmpty) {
         empty++;
         print('EMPTY  $name 分类无片');

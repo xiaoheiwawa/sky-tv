@@ -13,6 +13,60 @@ const densePosterGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
   mainAxisSpacing: 10,
 );
 
+/// 电视/大屏：海报更大，遥控器隔空操作也能看清焦点。
+const tvPosterGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
+  maxCrossAxisExtent: 208,
+  childAspectRatio: 0.58,
+  crossAxisSpacing: 14,
+  mainAxisSpacing: 18,
+);
+
+/// 电视焦点框：留出 3px 内边距画描边，聚焦时描边高亮并轻微放大。
+class TvFocusRing extends StatelessWidget {
+  const TvFocusRing({
+    super.key,
+    required this.focused,
+    required this.child,
+    this.radius = 14,
+  });
+
+  final bool focused;
+  final Widget child;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.all(3),
+      child: AnimatedScale(
+        scale: focused ? 1.05 : 1,
+        duration: const Duration(milliseconds: 140),
+        curve: Curves.easeOut,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(
+              color: focused ? scheme.primary : Colors.transparent,
+              width: 2.4,
+            ),
+            boxShadow: focused
+                ? [
+                    BoxShadow(
+                      color: scheme.primary.withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
 enum PosterMetaMode { compact, withSource }
 
 String? mediaMetaLine(
@@ -82,19 +136,30 @@ class PosterImage extends ConsumerWidget {
   }
 }
 
-class PosterCard extends StatelessWidget {
+class PosterCard extends StatefulWidget {
   const PosterCard({
     super.key,
     required this.item,
     required this.onTap,
     this.onLongPress,
     this.metaMode = PosterMetaMode.compact,
+    this.autofocus = false,
   });
 
   final MediaItem item;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
   final PosterMetaMode metaMode;
+
+  /// 电视进入页面时把焦点放在首张海报上。
+  final bool autofocus;
+
+  @override
+  State<PosterCard> createState() => _PosterCardState();
+}
+
+class _PosterCardState extends State<PosterCard> {
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
@@ -103,36 +168,41 @@ class PosterCard extends StatelessWidget {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : 160.0;
-        final category = item.category?.trim();
+        final category = widget.item.category?.trim();
         final showCategoryBadge = category != null && category.isNotEmpty;
         final meta = mediaMetaLine(
-          item,
-          mode: metaMode,
+          widget.item,
+          mode: widget.metaMode,
           omitCategory: showCategoryBadge,
         );
-        return InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 2 / 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  PosterImage(
-                    url: item.poster,
-                    memCacheWidth: posterMemCacheFor(width),
-                  ),
-                  if (showCategoryBadge)
-                    Positioned(
-                      top: 6,
-                      left: 6,
-                      child: _PosterBadge(label: category),
+        return TvFocusRing(
+          focused: _focused,
+          child: InkWell(
+            autofocus: widget.autofocus,
+            onFocusChange: (value) => setState(() => _focused = value),
+            onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: 2 / 3,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    PosterImage(
+                      url: widget.item.poster,
+                      memCacheWidth: posterMemCacheFor(width),
                     ),
-                  _PosterCaption(title: item.title, meta: meta),
-                ],
+                    if (showCategoryBadge)
+                      Positioned(
+                        top: 6,
+                        left: 6,
+                        child: _PosterBadge(label: category),
+                      ),
+                    _PosterCaption(title: widget.item.title, meta: meta),
+                  ],
+                ),
               ),
             ),
           ),
@@ -142,17 +212,26 @@ class PosterCard extends StatelessWidget {
   }
 }
 
-class ContinueWatchCard extends StatelessWidget {
+class ContinueWatchCard extends StatefulWidget {
   const ContinueWatchCard({
     super.key,
     required this.record,
     required this.onTap,
     this.onLongPress,
+    this.autofocus = false,
   });
 
   final WatchRecord record;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+  final bool autofocus;
+
+  @override
+  State<ContinueWatchCard> createState() => _ContinueWatchCardState();
+}
+
+class _ContinueWatchCardState extends State<ContinueWatchCard> {
+  bool _focused = false;
 
   @override
   Widget build(BuildContext context) {
@@ -161,40 +240,46 @@ class ContinueWatchCard extends StatelessWidget {
         final width = constraints.maxWidth.isFinite
             ? constraints.maxWidth
             : 118.0;
+        final record = widget.record;
         final progress = record.durationMs <= 0
             ? 0.0
             : (record.positionMs / record.durationMs).clamp(0.0, 1.0);
-        return InkWell(
-          onTap: onTap,
-          onLongPress: onLongPress,
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 2 / 3,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  PosterImage(
-                    url: record.poster,
-                    memCacheWidth: posterMemCacheFor(width),
-                  ),
-                  _PosterCaption(
-                    title: record.title,
-                    meta: '第 ${record.episodeIndex + 1} 集',
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
-                    child: LinearProgressIndicator(
-                      value: progress > 0 ? progress : null,
-                      minHeight: 3,
-                      backgroundColor: Colors.black38,
-                      color: Theme.of(context).colorScheme.primary,
+        return TvFocusRing(
+          focused: _focused,
+          child: InkWell(
+            autofocus: widget.autofocus,
+            onFocusChange: (value) => setState(() => _focused = value),
+            onTap: widget.onTap,
+            onLongPress: widget.onLongPress,
+            borderRadius: BorderRadius.circular(12),
+            child: AspectRatio(
+              aspectRatio: 2 / 3,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    PosterImage(
+                      url: record.poster,
+                      memCacheWidth: posterMemCacheFor(width),
                     ),
-                  ),
-                ],
+                    _PosterCaption(
+                      title: record.title,
+                      meta: '第 ${record.episodeIndex + 1} 集',
+                    ),
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
+                      child: LinearProgressIndicator(
+                        value: progress > 0 ? progress : null,
+                        minHeight: 3,
+                        backgroundColor: Colors.black38,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
