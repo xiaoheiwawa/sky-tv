@@ -5,6 +5,7 @@ import '../core/models/media_models.dart';
 import '../features/category/category_page.dart';
 import '../features/detail/detail_page.dart';
 import '../features/home/home_edit_page.dart';
+import '../features/home/douban_list_page.dart';
 import '../features/home/home_page.dart';
 import '../features/live/live_page.dart';
 import '../features/player/live_player_page.dart';
@@ -23,6 +24,12 @@ final appRouter = GoRouter(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
         GoRoute(path: '/', builder: (context, state) => const HomePage()),
+        GoRoute(
+          path: '/douban',
+          builder: (context, state) => DoubanListPage(
+            initialTag: state.uri.queryParameters['tag'] ?? '热门',
+          ),
+        ),
         GoRoute(
           path: '/home/edit',
           builder: (context, state) => const HomeEditPage(),

@@ -391,7 +391,7 @@ class _DoubanSectionState extends ConsumerState<_DoubanSection> {
                     return _DoubanCard(
                       item: item,
                       onTap: () {
-                        context.go(SkyRoutes.search(item.title));
+                        context.push(SkyRoutes.search(item.title));
                       },
                     );
                   },
