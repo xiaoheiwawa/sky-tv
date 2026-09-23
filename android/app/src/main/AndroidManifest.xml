@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- 电视盒子：无触摸屏也能安装，同时在 TV 桌面显示入口 -->
@@ -6,7 +6,7 @@
     <uses-feature android:name="android.software.leanback" android:required="false"/>
 
     <application
-        android:label="sky-tv"
+        android:label="摸鱼TV"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/tv_banner"
@@ -52,3 +52,4 @@
         </intent>
     </queries>
 </manifest>
+
