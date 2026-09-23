@@ -24,12 +24,47 @@ class SourceCategory {
     required this.sourceId,
     required this.sourceName,
     required this.name,
+    this.filters = const [],
   });
 
   final String id;
   final String sourceId;
   final String sourceName;
   final String name;
+
+  /// 该分类的二级筛选项（drpy-node 的 `filters`），MacCMS 源通常为空。
+  final List<SourceFilter> filters;
+
+  SourceCategory copyWith({List<SourceFilter>? filters}) {
+    return SourceCategory(
+      id: id,
+      sourceId: sourceId,
+      sourceName: sourceName,
+      name: name,
+      filters: filters ?? this.filters,
+    );
+  }
+}
+
+/// 一个筛选维度（如「类型」「年代」「排序」）。
+class SourceFilter {
+  const SourceFilter({
+    required this.key,
+    required this.name,
+    required this.options,
+  });
+
+  /// 回传给服务端的参数名（分类接口 `ext` 里的 key）。
+  final String key;
+  final String name;
+  final List<SourceFilterOption> options;
+}
+
+class SourceFilterOption {
+  const SourceFilterOption({required this.name, required this.value});
+
+  final String name;
+  final String value;
 }
 
 class CategoryPreviewRow {
@@ -65,6 +100,7 @@ class MediaItem {
     this.year,
     this.category,
     this.description,
+    this.remarks,
   });
 
   final String id;
@@ -75,6 +111,9 @@ class MediaItem {
   final String? year;
   final String? category;
   final String? description;
+
+  /// 上游给的短说明（MacCMS/drpy 的 `vod_remarks`，如「更新至第 12 集」「8.9」）。
+  final String? remarks;
 }
 
 class MediaDetail extends MediaItem {
@@ -87,6 +126,7 @@ class MediaDetail extends MediaItem {
     super.year,
     super.category,
     super.description,
+    super.remarks,
     required this.playLines,
   });
 

@@ -11,6 +11,7 @@ import '../../data/repositories/app_providers.dart';
 import '../../ui/theme/app_theme.dart';
 import '../../ui/theme/app_system_ui.dart';
 import '../../ui/widgets/episode_grid.dart';
+import '../sources/source_picker.dart';
 import '../../ui/widgets/poster_card.dart';
 import '../../ui/widgets/state_views.dart';
 
@@ -274,6 +275,25 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       setState(() => _isFavorite = favorite);
     }
     return detail;
+  }
+
+  // ignore: unused_element
+  void _showSourcePicker(MediaDetail detail) {
+    final sources = ref.read(sourcesProvider).value ?? [];
+    final selectedId = ref.read(currentSourceIdProvider).value;
+    showSourcePicker(
+      context,
+      sources: sources,
+      selectedId: selectedId,
+      onSelected: (sourceId) {
+        selectCurrentSource(ref, sourceId);
+        // 刷新详情到新源
+        setState(() {
+          _future = _load();
+        });
+      },
+      onManage: () => context.go('/sources'),
+    );
   }
 
   Future<void> _toggleFavorite(MediaDetail detail) async {

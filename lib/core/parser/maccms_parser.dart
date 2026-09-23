@@ -12,6 +12,9 @@ class MacCmsParser {
     if (raw is! List) {
       return const [];
     }
+    final filters = parseFilters(json['filters']);
+    // 服务端用 `*` 表示所有分类共用同一组筛选。
+    final shared = filters['*'] ?? const <SourceFilter>[];
     return raw
         .whereType<Map>()
         .map((item) {
@@ -25,10 +28,70 @@ class MacCmsParser {
             sourceId: source.sourceId,
             sourceName: source.name,
             name: name,
+            filters: filters[id] ?? shared,
           );
         })
         .whereType<SourceCategory>()
         .toList();
+  }
+
+  /// 解析 drpy-node 的二级筛选表（`filters`），按分类 ID 分组。
+  ///
+  /// 服务端可能返回 `{*: [...]}` 表示所有分类共用同一组筛选，
+  /// 此时 [parseCategories] 会为每个分类回退到 `*`。
+  Map<String, List<SourceFilter>> parseFilters(Object? raw) {
+    if (raw is! Map) {
+      return const {};
+    }
+    final result = <String, List<SourceFilter>>{};
+    raw.forEach((key, value) {
+      final filters = _filterGroups(value);
+      if (filters.isNotEmpty) {
+        result[key.toString()] = filters;
+      }
+    });
+    return result;
+  }
+
+  List<SourceFilter> _filterGroups(Object? raw) {
+    if (raw is! List) {
+      return const [];
+    }
+    final groups = <SourceFilter>[];
+    for (final item in raw) {
+      if (item is! Map) {
+        continue;
+      }
+      final key = _string(item['key']);
+      final options = <SourceFilterOption>[];
+      final values = item['value'];
+      if (values is List) {
+        for (final option in values) {
+          if (option is! Map) {
+            continue;
+          }
+          final name = _string(option['n'] ?? option['name']);
+          final value = _string(option['v'] ?? option['value']);
+          if (name.isEmpty && value.isEmpty) {
+            continue;
+          }
+          options.add(
+            SourceFilterOption(name: name.isEmpty ? value : name, value: value),
+          );
+        }
+      }
+      if (key.isEmpty || options.isEmpty) {
+        continue;
+      }
+      groups.add(
+        SourceFilter(
+          key: key,
+          name: _string(item['name']).isEmpty ? key : _string(item['name']),
+          options: options,
+        ),
+      );
+    }
+    return groups;
   }
 
   List<MediaItem> parseMediaList(
@@ -105,6 +168,7 @@ class MacCmsParser {
         year: media.year,
         category: media.category,
         description: media.description,
+        remarks: media.remarks,
         playLines: parsePlayLines(
           _optionalString(item['vod_play_from']),
           _optionalString(item['vod_play_url']),
@@ -141,6 +205,7 @@ class MacCmsParser {
       year: _optionalString(item['vod_year']),
       category: _optionalString(item['type_name']),
       description: _cleanHtml(_optionalString(item['vod_content'])),
+      remarks: _optionalString(item['vod_remarks']),
     );
   }
 

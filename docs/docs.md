@@ -198,6 +198,9 @@ AGENTS.md                     指向 ./docs/docs.md
 ### DS（drpy-node / T4）源
 
 - 查询约定：首页 `filter=1`（返回 `class` 分类表与推荐 `list`）、分类 `ac=list&t=<分类ID>&pg=<页>`、搜索 `wd=<关键词>&pg=<页>`、详情 `ac=detail&ids=<ID>`、播放 `play=<分集值>&flag=<线路名>`。
+- 二级筛选：首页响应的 `filters` 是按分类 ID 分组的筛选表（`*` 表示所有分类共用），`MacCmsParser.parseCategories` 归一到 `SourceCategory.filters`；分类页按选中项把 `{"key":"value"}` 做 base64 后作为 `ext` 参数传给 `ac=list`（drpy-node 约定），切换分类时清空已选筛选。
+- 列表/详情短说明 `vod_remarks`（如「更新至第 12 集」「8.9」）归一到 `MediaItem.remarks`，海报卡右上角以角标展示。
+- 非 200 或业务错误的可读原因：drpy-node 常以 `{error: ...}` 返回，`VideoApi` 把它拼进异常文案；`play` 只返回网盘分享链接（`push://`）时提示「需要网盘账号解析，请切换其他线路」。
 - 详情响应可能是 `{list:[...]}` 或裸数组，`VideoApi` 统一归一为 `list` 后再交给 `MacCmsParser`；网盘类源的详情**不返回 `vod_id`**，用请求时传入的 `fallbackId` 兜底（见 `MacCmsParser.parseDetail`）。
 - 分集播放必须二次解析：`MediaRepository.resolvePlay` 调 `play` 接口拿 `{url, header, parse, jx}`；返回的请求头（Referer 等）合并进 media_kit 的 `httpHeaders` 且优先于全局 UA。
 - 网盘类源的 `url` 是 `[名称, 地址, 名称, 地址]` 数组，且常混入 `http://127.0.0.1:<端口>/` 的本机代理地址；`VideoApi` 只取可直连的一条（优先带媒体扩展名），并去掉 TVBox 追加的 `#isVideo=true##threads=10#` 尾巴。

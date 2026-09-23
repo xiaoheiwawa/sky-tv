@@ -12,6 +12,7 @@
 
 - Flutter / Dart：`D:\temp\flutter\bin\flutter.bat`、`D:\temp\flutter\bin\dart.bat`（3.47.4 / Dart 3.13.3，与 CI 的 stable 一致）。
 - Android SDK：`D:\temp\Android\Sdk`；JDK 17：`D:\temp\jdk17\jdk-17.0.20.1+1`。
+- 新增环境一律装到 `D:\temp` 下（现有 `flutter`、`Android`、`jdk17`、`gradle-home`、`dotnet`、`nuget`、`keystore`、`apkchk`）：工具链、SDK、插件、包缓存都别装到 C 盘或仓库目录，仓库里只留源码和已入库文档。
 - 命令前先设环境：
 
 ```powershell

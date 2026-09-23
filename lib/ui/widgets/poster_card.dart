@@ -170,6 +170,10 @@ class _PosterCardState extends State<PosterCard> {
             : 160.0;
         final category = widget.item.category?.trim();
         final showCategoryBadge = category != null && category.isNotEmpty;
+        final remarksText = widget.item.remarks?.trim();
+        final remarks = remarksText == null || remarksText.isEmpty
+            ? null
+            : remarksText;
         final meta = mediaMetaLine(
           widget.item,
           mode: widget.metaMode,
@@ -199,6 +203,12 @@ class _PosterCardState extends State<PosterCard> {
                         top: 6,
                         left: 6,
                         child: _PosterBadge(label: category),
+                      ),
+                    if (remarks != null)
+                      Positioned(
+                        top: 6,
+                        right: 6,
+                        child: _PosterBadge(label: remarks),
                       ),
                     _PosterCaption(title: widget.item.title, meta: meta),
                   ],

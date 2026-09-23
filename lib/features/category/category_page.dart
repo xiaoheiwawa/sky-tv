@@ -35,6 +35,7 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
   final _items = <MediaItem>[];
   late String _categoryId = widget.categoryId;
   VideoSource? _source;
+  Map<String, String> _filters = const {};
   int _page = 0;
   int _token = 0;
   bool _hasMore = true;
@@ -92,6 +93,8 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
   }
 
   Widget _body(bool tv, List<SourceCategory> categories) {
+    final currentFilters =
+        _categoryOf(categories)?.filters ?? const <SourceFilter>[];
     if (_loading) {
       return const LoadingState(message: '正在加载分类...');
     }
@@ -117,6 +120,14 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
               categories: categories,
               selectedId: _categoryId,
               onSelected: _switchCategory,
+            ),
+          ),
+        if (currentFilters.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _FilterBar(
+              filters: currentFilters,
+              selected: _filters,
+              onSelected: _selectFilter,
             ),
           ),
         SliverPadding(
@@ -174,6 +185,26 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
       return;
     }
     _categoryId = categoryId;
+    _filters = const {};
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+    unawaited(_loadFirstPage());
+  }
+
+  void _selectFilter(SourceFilter filter, String value) {
+    if ((_filters[filter.key] ?? '') == value) {
+      return;
+    }
+    setState(() {
+      final next = Map<String, String>.from(_filters);
+      if (value.isEmpty) {
+        next.remove(filter.key);
+      } else {
+        next[filter.key] = value;
+      }
+      _filters = next;
+    });
     if (_scrollController.hasClients) {
       _scrollController.jumpTo(0);
     }
@@ -247,7 +278,12 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
   Future<MediaPage> _fetchPage(int page) async {
     final source = _source ??= await _resolveSource();
     final repo = await ref.read(mediaRepositoryProvider.future);
-    return repo.categoryPage(source, _categoryId, page: page);
+    return repo.categoryPage(
+      source,
+      _categoryId,
+      page: page,
+      filters: _filters,
+    );
   }
 
   Future<VideoSource> _resolveSource() async {
@@ -257,6 +293,61 @@ class _CategoryPageState extends ConsumerState<CategoryPage> {
       throw Exception('影视源不存在');
     }
     return source;
+  }
+}
+
+class _FilterBar extends StatelessWidget {
+  const _FilterBar({
+    required this.filters,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<SourceFilter> filters;
+  final Map<String, String> selected;
+  final void Function(SourceFilter filter, String value) onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final filter in filters)
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(right: 8, top: 8),
+                  child: Text(
+                    filter.name,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                for (final option in filter.options)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ChoiceChip(
+                      label: Text(option.name),
+                      selected: (selected[filter.key] ?? '') == option.value,
+                      showCheckmark: false,
+                      visualDensity: VisualDensity.compact,
+                      labelStyle: const TextStyle(fontSize: 12),
+                      onSelected: (_) => onSelected(filter, option.value),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+      ],
+    );
   }
 }
 

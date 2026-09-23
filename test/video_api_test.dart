@@ -126,6 +126,25 @@ void main() {
     },
   );
 
+  test('sends ds category filters as base64 ext', () async {
+    final seen = <Uri>[];
+    final client = MockClient((request) async {
+      seen.add(request.url);
+      return _json({
+        'list': [
+          {'vod_id': '1', 'vod_name': '筛选结果'},
+        ],
+      });
+    });
+    final api = VideoApi(client: client);
+
+    await api.categoryPage(_dsSource(), 'movie', 1, filters: {'sort': '83'});
+
+    final ext = seen.single.queryParameters['ext'];
+    expect(ext, isNotNull);
+    final decoded = jsonDecode(utf8.decode(base64.decode(ext!)));
+    expect(decoded, {'sort': '83'});
+  });
   test('parses detail and resolves ds play url with server headers', () async {
     final client = MockClient((request) async {
       if (request.url.queryParameters.containsKey('play')) {
@@ -292,6 +311,22 @@ void main() {
     );
   });
 
+  test('explains when a netdisk line only returns a share link', () async {
+    final client = MockClient(
+      (request) async =>
+          _json({'parse': 0, 'url': 'push://https://pan.quark.cn/s/abc'}),
+    );
+    final api = VideoApi(client: client);
+
+    await expectLater(
+      api.resolvePlay(
+        _dsSource(),
+        line: const PlayLine(name: '夸克#1', flag: '夸克#1', episodes: []),
+        episode: const Episode(title: '正片', url: 'pid-2'),
+      ),
+      throwsA(predicate((Object error) => error.toString().contains('网盘账号解析'))),
+    );
+  });
   test('parses netdisk details that omit vod_id', () async {
     final client = MockClient(
       (request) async => _json({

@@ -183,8 +183,14 @@ class MediaRepository {
     VideoSource source,
     String categoryId, {
     int page = 1,
+    Map<String, String> filters = const {},
   }) async {
-    final result = await api.categoryPage(source, categoryId, page);
+    final result = await api.categoryPage(
+      source,
+      categoryId,
+      page,
+      filters: filters,
+    );
     _rememberPosters(result.items);
     return result;
   }

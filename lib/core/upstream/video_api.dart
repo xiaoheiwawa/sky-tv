@@ -54,9 +54,13 @@ class VideoApi {
   Future<MediaPage> categoryPage(
     VideoSource source,
     String categoryId,
-    int page,
-  ) async {
-    final json = await _get(source, _categoryQuery(source, categoryId, page));
+    int page, {
+    Map<String, String> filters = const {},
+  }) async {
+    final json = await _get(
+      source,
+      _categoryQuery(source, categoryId, page, filters),
+    );
     return _parser.parseMediaPage(json, source);
   }
 
@@ -138,10 +142,20 @@ class VideoApi {
     VideoSource source,
     String categoryId,
     int page,
+    Map<String, String> filters,
   ) => switch (source.kind) {
     SourceKind.maccms => {'ac': 'videolist', 't': categoryId, 'pg': '$page'},
-    SourceKind.ds => {'ac': 'list', 't': categoryId, 'pg': '$page'},
+    SourceKind.ds => {
+      'ac': 'list',
+      't': categoryId,
+      'pg': '$page',
+      // drpy-node 的筛选条件是 base64 的 JSON（`ext`）。
+      if (filters.isNotEmpty) 'ext': _encodeFilters(filters),
+    },
   };
+
+  String _encodeFilters(Map<String, String> filters) =>
+      base64.encode(utf8.encode(jsonEncode(filters)));
 
   // DS 没有独立的「最近/最新」接口，首页数据即推荐数据。
   Map<String, String> _recentQuery(VideoSource source, int hours, int page) =>
@@ -177,7 +191,10 @@ class VideoApi {
         .get(uri, headers: _headers)
         .timeout(_timeout(source));
     if (response.statusCode != 200) {
-      throw Exception('${source.name} 请求失败：HTTP ${response.statusCode}');
+      throw Exception(
+        '${source.name} 请求失败：HTTP ${response.statusCode}'
+        '${_errorSuffix(response.bodyBytes)}',
+      );
     }
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
     final map = switch (decoded) {
@@ -248,8 +265,33 @@ bool _needsParser(Map<String, Object?> json) {
   return false;
 }
 
+/// 非 200 响应里服务端给出的原因（drpy-node 用 `{error: ...}`）。
+///
+/// 解析不出来时返回空串，调用方只报 HTTP 状态码。
+String _errorSuffix(List<int> bodyBytes) {
+  try {
+    final decoded = jsonDecode(utf8.decode(bodyBytes));
+    if (decoded is! Map) {
+      return '';
+    }
+    final message = _text(decoded['error'] ?? decoded['msg']);
+    if (message.isEmpty) {
+      return '';
+    }
+    final trimmed = message.length > 160
+        ? '${message.substring(0, 160)}…'
+        : message;
+    return '：$trimmed';
+  } catch (_) {
+    return '';
+  }
+}
+
 /// `play` 接口没有给出可播放地址时的提示文案。
 String _playFailureMessage(Map<String, Object?> json) {
+  if (_needsPanAccount(json['url'])) {
+    return '该线路需要网盘账号解析，无法直接播放，请切换其他线路';
+  }
   final message = _text(json['msg']);
   if (message.isNotEmpty) {
     return message;
@@ -283,6 +325,18 @@ String? _playUrl(Object? value) {
     fallback ??= url;
   }
   return fallback;
+}
+
+/// `play` 返回了网盘分享链接（`push://`）时，客户端无法直接播放。
+///
+/// 这类线路依赖服务端的网盘 SDK / 会员账号解析，只能换同影片的直链线路。
+bool _needsPanAccount(Object? value) {
+  final candidates = switch (value) {
+    final String item => <String>[item],
+    final List<Object?> items => items.whereType<String>(),
+    _ => const <String>[],
+  };
+  return candidates.any((item) => item.trim().startsWith('push://'));
 }
 
 /// 去掉 TVBox 追加在地址尾部的 `#isVideo=true##threads=10#` 标记，

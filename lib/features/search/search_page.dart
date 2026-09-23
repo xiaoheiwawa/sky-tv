@@ -10,6 +10,7 @@ import '../../app/routes.dart';
 import '../../core/models/media_models.dart';
 import '../../data/repositories/app_providers.dart';
 import '../../data/repositories/media_repository.dart';
+import '../../core/models/video_source.dart';
 import '../../ui/widgets/app_search_field.dart';
 import '../../ui/widgets/poster_card.dart';
 import '../../ui/widgets/state_views.dart';
@@ -30,6 +31,8 @@ class _SearchPageState extends ConsumerState<SearchPage> {
   String? _error;
   int _searchToken = 0;
   int _searchedSourceCount = 0;
+  // ignore: unused_field
+  String? _searchSourceId; // null = 全站点
   int _enabledSourceCount = 0;
   String? _activeQuery;
 
@@ -473,4 +476,53 @@ class _SearchGroup {
   final List<MediaItem> items;
   final String? error;
   final bool completed;
+}
+
+/// 全站点下拉选择器：切换搜索范围。
+// ignore: unused_element
+class _SourceScopeDropdown extends ConsumerWidget {
+  const _SourceScopeDropdown({
+    required this.selectedId,
+    required this.onChanged,
+  });
+
+  final String? selectedId;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sources = ref.watch(sourcesProvider);
+    final items = sources.maybeWhen(
+      data: (list) => list.where((s) => !s.disabled).toList(),
+      orElse: () => const <VideoSource>[],
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: selectedId,
+          hint: const Text('全站点'),
+          items: [
+            const DropdownMenuItem<String?>(value: null, child: Text('全站点')),
+            for (final source in items)
+              DropdownMenuItem<String?>(
+                value: source.sourceId,
+                child: Text(
+                  source.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: onChanged,
+          borderRadius: BorderRadius.circular(10),
+          isDense: true,
+        ),
+      ),
+    );
+  }
 }
